@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SignalSide {
+  BUY
+  SELL
+  HOLD
+}
+
+enum PaperOrderSide {
+  BUY
+  SELL
+}
+
+enum PaperOrderStatus {
+  SIMULATED
+  BLOCKED
+}
+
+model KisConfig {
+  id                    String   @id @default(cuid())
+  encryptedAppKey       String
+  encryptedAppSecret    String
+  encryptedAccountNo    String
+  encryptedProductCode  String
+  baseUrlType           String   @default("vts")
+  isDemo                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model TradingSettings {
+  id                       String   @id @default(cuid())
+  tradingMode              String   @default("DEMO")
+  orderExecutionMode       String   @default("PAPER")
+  safetyMode               String   @default("SAFE_LOCKED")
+  killSwitchEnabled        Boolean  @default(true)
+  autoDomesticOrderEnabled Boolean  @default(false)
+  autoExitEnabled          Boolean  @default(false)
+  allowRealDomesticOrder   Boolean  @default(false)
+  allowRealOverseasOrder   Boolean  @default(false)
+  allowRealFallback        Boolean  @default(false)
+  pipelineTestEnabled      Boolean  @default(false)
+  updatedAt                DateTime @updatedAt
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  stockCode String   @unique
+  stockName String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Position {
+  id             String   @id @default(cuid())
+  stockCode      String   @unique
+  stockName      String
+  quantity       Decimal  @db.Decimal(20, 4)
+  averagePrice   Decimal  @db.Decimal(20, 4)
+  currentPrice   Decimal  @db.Decimal(20, 4)
+  evaluation     Decimal  @db.Decimal(24, 4)
+  source         String   @default("KIS_BALANCE")
+  lastSyncedAt   DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Signal {
+  id         String     @id @default(cuid())
+  stockCode  String
+  stockName  String
+  side       SignalSide
+  confidence Int
+  buyScore   Int
+  sellScore  Int
+  reason     String
+  createdAt  DateTime   @default(now())
+}
+
+model PaperOrder {
+  id            String           @id @default(cuid())
+  timestamp     DateTime         @default(now())
+  market        String           @default("DOMESTIC")
+  stockCode     String
+  stockName     String
+  side          PaperOrderSide
+  quantity      Decimal          @db.Decimal(20, 4)
+  price         Decimal          @db.Decimal(20, 4)
+  orderType     String           @default("MARKET_SIMULATED")
+  executionMode String           @default("PAPER")
+  status        PaperOrderStatus @default(SIMULATED)
+  blockedReason String?
+  signalId      String?
+  sessionId     String?
+}
+
+model TradeHistory {
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  stockCode     String
+  stockName     String
+  side          String
+  executionMode String
+  status        String
+  reason        String?
+  signalId      String?
+  sessionId     String?
+}
+
+model AgentLog {
+  id        String   @id @default(cuid())
+  level     String
+  type      String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model MarketData {
+  id        String   @id @default(cuid())
+  stockCode String
+  price     Decimal  @db.Decimal(20, 4)
+  candleAt  DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([stockCode, createdAt])
+}
