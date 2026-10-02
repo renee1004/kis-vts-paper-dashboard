@@ -10,6 +10,7 @@ import { isPending, ownedLot, sellableQuantity } from "@/lib/ownership";
 import { exitDecision, sizeForRisk, STRATEGY_VERSION } from "@/lib/strategy";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits } from "@/lib/trading-limits";
+import { researchBuyNewsBlock } from "@/lib/news-research";
 const PRINCIPAL_KRW = PAPER_CAPITAL_KRW;
 const DAILY_BUY_CAP = DAILY_BUY_CAP_KRW;
 const MAX_POSITIONS = 5;
@@ -141,6 +142,14 @@ export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVt
     quantity = Math.min(quantity, usBuyingPower.quantity,
       Math.floor(Math.max(0, usBuyingPower.amountUsd - pendingUsd) / (input.price * 1.01)));
     if (quantity < 1) return blocked(input, "US_ORDERABLE_FUNDS_OR_BUDGET_CAP");
+  }
+  if (input.side === "BUY") {
+    const newsGate = researchBuyNewsBlock(input.market, input.stockCode);
+    if (newsGate.block) {
+      const detail = newsGate.headline ?? newsGate.reason;
+      addLog("SIGNAL", `NEWS_DEFEND ${input.market} ${input.stockCode} ${detail}`, "WARN");
+      return blocked(input, "NEWS_DEFEND");
+    }
   }
   return quantity > 0 ? submitOrder(client, input, quantity) : blocked(input, "POSITION_OR_DAILY_BUDGET_CAP");
 }
