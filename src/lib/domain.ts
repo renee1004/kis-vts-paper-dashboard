@@ -115,6 +115,8 @@ export interface WatchlistItem {
   sellScore: number;
   blockedReason: string;
   currentPrice: number | null;
+  /** 20-day mean of completed closes from the last analysis (display/diagnostics). */
+  trendMa?: number | null;
 }
 
 export interface Position {

@@ -70,6 +70,7 @@ async function analyzeWatchlistItem(
     }
   }
   item.analysis = signal.side;
+  item.trendMa = signal.trendMa ?? null;
   item.confidence = signal.confidence;
   item.buyScore = signal.buyScore;
   item.sellScore = signal.sellScore;
@@ -94,6 +95,7 @@ async function analyzeWatchlistItem(
       signalId,
       signalDate: signal.signalDate ?? undefined,
       stopFraction: signal.stopFraction,
+      trendMa: signal.trendMa,
     });
     item.blockedReason = order?.blockedReason ?? "";
   }

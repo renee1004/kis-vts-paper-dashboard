@@ -3,6 +3,7 @@ import type { VtsOrder } from "@/lib/domain";
 import { ownedLot } from "@/lib/ownership";
 import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
 import { strategyValuation } from "@/lib/vts-execution";
+import { findStopOverride, REBASE_STOP_FRACTION, rebasedStopPrice, TREND_CONFIRM_AFTER_KST, type StopOverride } from "@/lib/stop-rebase";
 
 /**
  * One-time, auditable import of KIS VTS fills that the pre-2026-09-11 dashboard
@@ -13,6 +14,7 @@ import { strategyValuation } from "@/lib/vts-execution";
 export const PRE_0911_IMPORT_SOURCE = "KIS_VTS_FILL_IMPORT_PRE_0911";
 export const PRE_0911_APPLY_CONFIRM = "IMPORT_PRE_0911_VTS_FILLS";
 export const PRE_0911_REVERT_CONFIRM = "REVERT_PRE_0911_VTS_FILLS";
+export const REBASE_STOPS_CONFIRM = "REBASE_IMPORTED_STOPS";
 const LEGACY_STOP_FRACTION = 0.05;
 
 // [stockCode, stockName, side, KST date, KST time, quantity, total fill amount KRW, order no last 4]
@@ -71,7 +73,8 @@ export function previewPre0911Import() {
     return { stockCode, ownedQuantity: lot.quantity, averagePrice: lot.averagePrice, brokerQuantity,
       fits: lot.quantity <= brokerQuantity };
   });
-  return { source: PRE_0911_IMPORT_SOURCE, alreadyImported: imported, rowCount: rows.length, lots };
+  return { source: PRE_0911_IMPORT_SOURCE, alreadyImported: imported, rowCount: rows.length, lots,
+    stopOverrides: state.stopOverrides.filter((o) => o.source === PRE_0911_IMPORT_SOURCE) };
 }
 
 export function applyPre0911Import() {
@@ -86,6 +89,7 @@ export function applyPre0911Import() {
   // Historical P&L of imported lots is not today's loss: re-baseline the daily loss check.
   if (state.strategyRisk.date === today) state.strategyRisk.startPnl = strategyValuation().pnl;
   addLog("RISK", `과거 KIS 체결 ${preview.rowCount}건을 에이전트 보유로 등록 (${PRE_0911_IMPORT_SOURCE})`, "WARN");
+  rebaseImportedStops();
   saveState();
   return { ...previewPre0911Import(), applied: true };
 }
@@ -93,8 +97,38 @@ export function applyPre0911Import() {
 export function revertPre0911Import() {
   const before = state.vtsOrders.length;
   state.vtsOrders = state.vtsOrders.filter((o) => o.importSource !== PRE_0911_IMPORT_SOURCE);
+  state.stopOverrides = state.stopOverrides.filter((o) => o.source !== PRE_0911_IMPORT_SOURCE);
   rebuildAgentOwnedPositions();
   addLog("RISK", `과거 KIS 체결 등록 취소 (${PRE_0911_IMPORT_SOURCE})`, "WARN");
   saveState();
   return { removed: before - state.vtsOrders.length };
+}
+/**
+ * Imported lots that were already below their average-cost stop get a rebased
+ * stop (reference price x 0.95) instead of being dumped at the next open.
+ * Reference price = latest KIS balance price (prpr). One override per lot.
+ */
+export function rebaseImportedStops(now = new Date()) {
+  const age = now.getTime() - Date.parse(state.balanceSnapshot?.syncedAt ?? "");
+  if (!Number.isFinite(age) || age < 0 || age > 600_000) throw new Error("STALE_DOMESTIC_BALANCE");
+  const created: StopOverride[] = [];
+  const kstDay = new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10).replaceAll("-", "");
+  for (const position of state.positions) {
+    const lot = ownedLot(state.vtsOrders, "DOMESTIC", position.stockCode);
+    if (!lot.quantity || !lot.positionId) continue;
+    if (state.vtsOrders.find((o) => o.id === lot.positionId)?.importSource !== PRE_0911_IMPORT_SOURCE) continue;
+    if (findStopOverride(state.stopOverrides, "DOMESTIC", position.stockCode, lot.positionId)) continue;
+    const originalStopPrice = lot.averagePrice * (1 - lot.stopFraction);
+    if (!(position.currentPrice > 0) || position.currentPrice > originalStopPrice) continue;
+    const override: StopOverride = { market: "DOMESTIC", stockCode: position.stockCode, stockName: position.stockName,
+      positionId: lot.positionId, source: PRE_0911_IMPORT_SOURCE, reason: "IMPORTED_POSITION_ALREADY_BELOW_STOP",
+      averagePrice: lot.averagePrice, originalStopPrice, referencePrice: position.currentPrice,
+      referencePriceSource: "KIS_BALANCE_PRPR", referenceDate: kstDay, referenceAt: position.lastSyncedAt,
+      stopFraction: REBASE_STOP_FRACTION, stopPrice: rebasedStopPrice(position.currentPrice),
+      trendConfirmAfterKst: TREND_CONFIRM_AFTER_KST, createdAt: now.toISOString() };
+    state.stopOverrides.push(override); created.push(override);
+    addLog("SIGNAL", `재설정 손절 적용 ${override.stockName}(${override.stockCode}): 평균 ${Math.round(override.averagePrice).toLocaleString("ko-KR")} 기존 손절선 ${Math.round(originalStopPrice).toLocaleString("ko-KR")} 이미 하회 → 기준가 ${override.referencePrice.toLocaleString("ko-KR")}(${kstDay}) × 0.95 = 새 손절선 ${override.stopPrice.toLocaleString("ko-KR")}. 개장 즉시 손절 없음, ${TREND_CONFIRM_AFTER_KST} 이후 20일선 아래 확인 또는 새 손절선 도달 시 전량 매도`);
+  }
+  if (created.length) saveState();
+  return { created, stopOverrides: state.stopOverrides };
 }

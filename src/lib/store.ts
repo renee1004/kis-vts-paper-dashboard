@@ -2,6 +2,7 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { ownedLot } from "@/lib/ownership";
+import type { StopOverride } from "@/lib/stop-rebase";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -62,6 +63,7 @@ interface RuntimeState {
   tradeHistory: PaperOrder[];
   vtsOrders: VtsOrder[];
   agentOwnedPositions: AgentOwnedPosition[];
+  stopOverrides: StopOverride[];
   logs: AgentLog[];
   updatedAt: string;
 }
@@ -122,6 +124,7 @@ function initialState(): RuntimeState {
     tradeHistory: [],
     vtsOrders: [],
     agentOwnedPositions: [],
+    stopOverrides: [],
     logs: [],
     updatedAt: new Date().toISOString(),
   };
@@ -277,6 +280,7 @@ function migrateRuntimeState(parsed: Partial<RuntimeState>): RuntimeState {
       ...order,
       market: order.market ?? "DOMESTIC",
     })),
+    stopOverrides: parsed.stopOverrides ?? [],
     logs: parsed.logs ?? [],
   };
 }
@@ -301,6 +305,8 @@ const globalState = globalThis as typeof globalThis & {
 
 export const state = globalState.__vtsPaperState ?? loadState();
 globalState.__vtsPaperState = state;
+// A state object created before this field existed (dev hot reload) must still be usable.
+state.stopOverrides ??= [];
 
 export function saveState(): void {
   ensureDataDir();

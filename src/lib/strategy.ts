@@ -7,6 +7,8 @@ export interface StrategySignal {
   side: "BUY" | "SELL" | "HOLD";
   confidence: number; buyScore: number; sellScore: number;
   reason: string; signalDate: string | null; stopFraction: number;
+  /** 20-day mean of completed closes (the trend line the SELL rule compares against). */
+  trendMa?: number;
 }
 
 export function completedBars(bars: DailyBar[], marketDate: string): DailyBar[] {
@@ -29,6 +31,7 @@ export function analyzeTrend(bars: DailyBar[]): StrategySignal {
   const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
   const last = closes.at(-1)!;
   const fast = mean(closes.slice(-20));
+  result.trendMa = fast;
   const slow = mean(closes.slice(-60));
   const previousSlow = mean(closes.slice(-65, -5));
   const breakout = Math.max(...closes.slice(-21, -1));
@@ -51,9 +54,13 @@ export function analyzeTrend(bars: DailyBar[]): StrategySignal {
 export function exitDecision(input: {
   quantity: number; averagePrice: number; currentPrice: number;
   stopFraction: number; partialTaken: boolean;
+  /** Absolute rebased hard stop; replaces the average-cost stop when set. */
+  stopPrice?: number;
 }): { quantity: number; reason: string } | null {
   if (input.quantity < 1 || input.averagePrice <= 0 || input.currentPrice <= 0) return null;
-  if (input.currentPrice <= input.averagePrice * (1 - input.stopFraction)) return { quantity: input.quantity, reason: "VOLATILITY_STOP" };
+  if (input.stopPrice && input.stopPrice > 0) {
+    if (input.currentPrice <= input.stopPrice) return { quantity: input.quantity, reason: "REBASED_HARD_STOP" };
+  } else if (input.currentPrice <= input.averagePrice * (1 - input.stopFraction)) return { quantity: input.quantity, reason: "VOLATILITY_STOP" };
   if (input.currentPrice >= input.averagePrice * 1.20) return { quantity: input.quantity, reason: "TAKE_PROFIT_20" };
   if (input.currentPrice >= input.averagePrice * 1.10 - 1e-10 && input.quantity >= 2 && !input.partialTaken) {
     return { quantity: Math.floor(input.quantity / 2), reason: "TAKE_PROFIT_10" };

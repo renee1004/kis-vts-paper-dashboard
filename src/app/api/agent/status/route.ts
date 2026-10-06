@@ -9,7 +9,7 @@ import {
   usRegularHoursDescriptionKo,
 } from "@/lib/market-hours";
 import { state } from "@/lib/store";
-import { strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
+import { effectiveStops, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +62,8 @@ export async function GET() {
       balanceSnapshot: state.balanceSnapshot,
       overseasBalanceSnapshot: state.overseasBalanceSnapshot,
       agentOwnedPositions: state.agentOwnedPositions,
+      effectiveStops: effectiveStops(),
+      stopOverrides: state.stopOverrides,
       vtsOrders: state.vtsOrders.slice(0, 50),
       watchlist: state.watchlist,
       usWatchlist: state.usWatchlist,

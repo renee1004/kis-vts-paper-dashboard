@@ -4,6 +4,8 @@ import {
   previewPre0911Import,
   PRE_0911_APPLY_CONFIRM,
   PRE_0911_REVERT_CONFIRM,
+  REBASE_STOPS_CONFIRM,
+  rebaseImportedStops,
   revertPre0911Import,
 } from "@/lib/fill-import";
 
@@ -26,6 +28,8 @@ export async function POST(request: Request) {
   try {
     if (body.action === "APPLY" && body.confirm === PRE_0911_APPLY_CONFIRM)
       return NextResponse.json({ success: true, data: applyPre0911Import() });
+    if (body.action === "REBASE_STOPS" && body.confirm === REBASE_STOPS_CONFIRM)
+      return NextResponse.json({ success: true, data: rebaseImportedStops() });
     if (body.action === "REVERT" && body.confirm === PRE_0911_REVERT_CONFIRM)
       return NextResponse.json({ success: true, data: revertPre0911Import() });
     return NextResponse.json({ success: false, error: "CONFIRMATION_REQUIRED" }, { status: 400 });
