@@ -1,17 +1,17 @@
 import "server-only";
 import crypto from "node:crypto";
-import { TradingMarket, USD_KRW_SAFETY_RATE, VtsOrder, buyNotionalKrw } from "@/lib/domain";
+import { TradingMarket, USD_KRW_SAFETY_RATE, VtsOrder, WatchlistItem, buyNotionalKrw } from "@/lib/domain";
 import { KisVtsClient } from "@/lib/kis-vts-client";
 import { evaluatePaperOrder } from "@/lib/rule-engine";
 import { getOrderDecision } from "@/lib/safety";
-import { usMarketDate } from "@/lib/market-hours";
+import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
 import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
 import { isPending, ownedLot, sameKisOrderNo, sellableQuantity } from "@/lib/ownership";
-import { exitDecision, sizeForRisk, STRATEGY_VERSION } from "@/lib/strategy";
+import { exitDecision, sizeForRisk, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits } from "@/lib/trading-limits";
 import { researchBuyNewsBlock } from "@/lib/news-research";
-import { findStopOverride, kstMinutes, rebasedTrendExitGate, type StopOverride } from "@/lib/stop-rebase";
+import { closeBreakdown, findStopOverride, kstMinutes, recentLow, REBASED_TREND_RULE, type StopOverride } from "@/lib/stop-rebase";
 const PRINCIPAL_KRW = PAPER_CAPITAL_KRW;
 const DAILY_BUY_CAP = DAILY_BUY_CAP_KRW;
 const MAX_POSITIONS = 5;
@@ -107,11 +107,10 @@ export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVt
   if (input.side === "SELL") {
     const override = findStopOverride(state.stopOverrides, input.market, input.stockCode, lot.positionId);
     if (override) {
-      // Rebased positions: no trend sell in the opening minutes; after 09:30 KST the current
-      // price must still be below the 20-day trend line to confirm there is no upside.
-      const trend = rebasedTrendExitGate({ currentPrice: input.price, trendMa: input.trendMa, at: new Date() });
-      noteOverride(override, "trend", trend.reason, `현재가 ${fmt(input.price)} · 20일선 ${fmt(input.trendMa)}`);
-      if (!trend.allowed) return blocked(input, trend.reason);
+      // Rebased positions never sell on the intraday trend signal. Exits: hard stop, or a
+      // completed daily close below the recent 10-day low (both in enforceRiskExits).
+      noteOverride(override, "trend", "REBASED_NO_INTRADAY_TREND_SELL", `현재가 ${fmt(input.price)}`);
+      return blocked(input, "REBASED_NO_INTRADAY_TREND_SELL");
     }
     const quantity = sellableQuantity(state.vtsOrders, input.market, input.stockCode, positionFor(input)?.quantity ?? 0);
     return quantity > 0 ? submitOrder(client, input, quantity, "TREND_EXIT", lot.positionId ?? undefined) : blocked(input, "NO_CONFIRMED_AGENT_SHARES");
@@ -174,9 +173,11 @@ export async function enforceRiskExits(client: KisVtsClient): Promise<void> {
     if (quantity <= 0 || !lot.priceVerified || !lot.positionId) continue;
     if (state.vtsOrders.some((o) => o.market === position.market && o.stockCode === position.stockCode && isPending(o))) continue;
     const override = findStopOverride(state.stopOverrides, position.market, position.stockCode, lot.positionId);
-    const decision = kill ? { quantity, reason: "STRATEGY_DRAWDOWN_20" } : exitDecision({ quantity,
+    const priceExit = kill ? { quantity, reason: "STRATEGY_DRAWDOWN_20" } : exitDecision({ quantity,
       averagePrice: lot.averagePrice, currentPrice: position.currentPrice, stopFraction: lot.stopFraction, partialTaken: lot.partialTaken,
       stopPrice: override?.stopPrice });
+    // A completed close below the recent low (evaluated once per day) sells at the next open session.
+    const decision = priceExit ?? (override?.trendExitSignal ? { quantity, reason: "REBASED_CLOSE_BELOW_RECENT_LOW" } : null);
     if (override) noteOverride(override, "stop", decision?.reason ?? "HOLD_ABOVE_REBASED_STOP", `현재가 ${fmt(position.currentPrice)}`);
     if (decision) await submitOrder(client, { ...position, side: "SELL", confidence: 100, price: position.currentPrice,
       signalId: `exit-${lot.positionId}-${decision.reason}` }, decision.quantity, decision.reason, lot.positionId);
@@ -250,42 +251,68 @@ function noteOverride(override: StopOverride, kind: "stop" | "trend", evaluation
   const field = kind === "stop" ? "lastStopEvaluation" : "lastTrendEvaluation";
   if (override[field] === evaluation) return;
   override[field] = evaluation; override.lastEvaluatedAt = new Date().toISOString();
-  addLog("SIGNAL", `재설정 손절 ${override.stockName}(${override.stockCode}) ${evaluation}: ${detail} · 새 손절선 ${fmt(override.stopPrice)} · 추세매도는 ${override.trendConfirmAfterKst} 이후 20일선 아래일 때만`);
+  addLog("SIGNAL", `재설정 손절 ${override.stockName}(${override.stockCode}) ${evaluation}: ${detail} · 손절선 ${fmt(override.stopPrice)} · 추세매도는 일봉 종가가 직전 10거래일 저점 아래일 때 다음 장`);
+}
+/**
+ * Called with the KIS daily bars after each analysis. Evaluates each completed day once
+ * for rebased positions; today's partial bar is never treated as a close.
+ */
+export function evaluateRebasedTrend(item: WatchlistItem, bars: DailyBar[], now = new Date()): void {
+  if (item.market !== "DOMESTIC") return;
+  const completed = bars.filter((bar) => bar.date < domesticMarketDate(now));
+  item.recentLow10 = recentLow(completed, completed.length)?.low ?? null;
+  const lot = ownedLot(state.vtsOrders, item.market, item.stockCode);
+  const override = findStopOverride(state.stopOverrides, item.market, item.stockCode, lot.positionId);
+  if (!override || lot.quantity <= 0) return;
+  override.trendExitRule = REBASED_TREND_RULE;
+  const evaluation = closeBreakdown(completed, now);
+  if (!evaluation || evaluation.date < override.referenceDate) return;
+  if (override.lastCloseEvaluation?.date === evaluation.date) return;
+  override.lastCloseEvaluation = evaluation;
+  if (evaluation.breakdown && !override.trendExitSignal) override.trendExitSignal = evaluation;
+  addLog("SIGNAL", `재설정 손절 ${override.stockName}(${override.stockCode}) ${evaluation.date} 종가 ${fmt(evaluation.close)} vs 직전 10거래일 저점 ${fmt(evaluation.recentLow)}(${evaluation.windowStart}~${evaluation.windowEnd}): ${evaluation.breakdown ? "저점 하회 → 다음 장 전량 매도" : "저점 위 → 보유"}`);
 }
 export function effectiveStops() {
   return state.agentOwnedPositions.map((position) => {
     const lot = ownedLot(state.vtsOrders, position.market, position.stockCode);
     const override = findStopOverride(state.stopOverrides, position.market, position.stockCode, lot.positionId);
+    const item = [...state.watchlist, ...state.usWatchlist].find((w) => w.market === position.market && w.stockCode === position.stockCode);
     return { market: position.market, stockCode: position.stockCode, stockName: position.stockName,
       quantity: lot.quantity, averagePrice: lot.averagePrice,
       stopPrice: override ? override.stopPrice : lot.averagePrice * (1 - lot.stopFraction),
       stopBasis: override ? "REBASED_REFERENCE_PRICE" : "AVERAGE_COST",
       stopFraction: override ? override.stopFraction : lot.stopFraction,
       referencePrice: override?.referencePrice ?? null, referenceDate: override?.referenceDate ?? null,
-      trendExitNotBeforeKst: override?.trendConfirmAfterKst ?? null,
+      trendExitRule: override ? REBASED_TREND_RULE : "TREND_SIGNAL",
+      recentLow10ForNextClose: override ? item?.recentLow10 ?? null : null,
+      lastCloseEvaluation: override?.lastCloseEvaluation ?? null, trendExitSignal: override?.trendExitSignal ?? null,
       takeProfit10: lot.averagePrice * 1.1, takeProfit20: lot.averagePrice * 1.2 };
   });
 }
 /** Read-only what-if of the exit rules for one owned position. Places no orders. */
-export function dryRunExit(input: { market: TradingMarket; stockCode: string; price: number; at: Date; trendMa?: number }) {
+export function dryRunExit(input: { market: TradingMarket; stockCode: string; price: number; at: Date;
+  simulatedClose?: number; recentLow?: number }) {
   const lot = ownedLot(state.vtsOrders, input.market, input.stockCode);
-  const brokerQuantity = positionFor(input)?.quantity ?? 0;
-  const quantity = sellableQuantity(state.vtsOrders, input.market, input.stockCode, brokerQuantity);
+  const quantity = sellableQuantity(state.vtsOrders, input.market, input.stockCode, positionFor(input)?.quantity ?? 0);
   const override = findStopOverride(state.stopOverrides, input.market, input.stockCode, lot.positionId);
   const item = [...state.watchlist, ...state.usWatchlist].find((w) => w.market === input.market && w.stockCode === input.stockCode);
-  const trendMa = input.trendMa ?? item?.trendMa ?? null;
-  const exit = exitDecision({ quantity, averagePrice: lot.averagePrice, currentPrice: input.price,
+  const low = input.recentLow ?? item?.recentLow10 ?? null;
+  const exit = input.simulatedClose ? null : exitDecision({ quantity, averagePrice: lot.averagePrice, currentPrice: input.price,
     stopFraction: lot.stopFraction, partialTaken: lot.partialTaken, stopPrice: override?.stopPrice });
-  const trendSignal = item?.analysis ?? "HOLD";
-  const trend = trendSignal !== "SELL" ? { allowed: false, reason: "NO_TREND_SELL_SIGNAL" }
-    : override ? rebasedTrendExitGate({ currentPrice: input.price, trendMa, at: input.at })
-    : { allowed: true, reason: "TREND_EXIT" };
+  let action: string;
+  if (exit) action = `SELL ${exit.quantity} (${exit.reason})`;
+  else if (override && input.simulatedClose) {
+    action = !(low && low > 0) ? "HOLD (RECENT_LOW_UNKNOWN)" : input.simulatedClose < low
+      ? `SELL ${quantity} at next session open (REBASED_CLOSE_BELOW_RECENT_LOW)` : "HOLD (REBASED_CLOSE_ABOVE_RECENT_LOW)";
+  } else if (override) {
+    action = override.trendExitSignal ? `SELL ${quantity} (REBASED_CLOSE_BELOW_RECENT_LOW ${override.trendExitSignal.date})`
+      : "HOLD (REBASED_NO_INTRADAY_TREND_SELL)";
+  } else action = item?.analysis === "SELL" && quantity > 0 ? `SELL ${quantity} (TREND_EXIT)` : "HOLD (NO_TREND_SELL_SIGNAL)";
   const minutes = kstMinutes(input.at);
-  return { stockCode: input.stockCode, kstTime: `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`,
-    price: input.price, sellableQuantity: quantity, averagePrice: lot.averagePrice,
-    stopPrice: override ? override.stopPrice : lot.averagePrice * (1 - lot.stopFraction),
-    stopBasis: override ? "REBASED_REFERENCE_PRICE" : "AVERAGE_COST", trendSignal, trendMa,
-    exitRule: exit, trendRule: trend,
-    action: exit ? `SELL ${exit.quantity} (${exit.reason})` : trend.allowed && quantity > 0 ? `SELL ${quantity} (${trend.reason})` : `HOLD (${trend.reason})`,
+  return { stockCode: input.stockCode,
+    kstTime: input.simulatedClose ? "completed close" : `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`,
+    price: input.price, simulatedClose: input.simulatedClose ?? null, recentLow: low, sellableQuantity: quantity,
+    averagePrice: lot.averagePrice, stopPrice: override ? override.stopPrice : lot.averagePrice * (1 - lot.stopFraction),
+    stopBasis: override ? "REBASED_REFERENCE_PRICE" : "AVERAGE_COST", action,
     note: "market-hours/safety gates not simulated; dry run only" };
 }

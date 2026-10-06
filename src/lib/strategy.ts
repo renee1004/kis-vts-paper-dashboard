@@ -2,7 +2,7 @@
 import type { TradingMarket } from "@/lib/domain";
 import { marketRiskLimits } from "@/lib/trading-limits";
 export const STRATEGY_VERSION = "trend-breakout-v2-capital30m-unvalidated";
-export interface DailyBar { date: string; close: number }
+export interface DailyBar { date: string; close: number; low?: number }
 export interface StrategySignal {
   side: "BUY" | "SELL" | "HOLD";
   confidence: number; buyScore: number; sellScore: number;

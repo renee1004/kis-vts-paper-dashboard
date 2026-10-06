@@ -3,7 +3,7 @@ import type { VtsOrder } from "@/lib/domain";
 import { ownedLot } from "@/lib/ownership";
 import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
 import { strategyValuation } from "@/lib/vts-execution";
-import { findStopOverride, REBASE_STOP_FRACTION, rebasedStopPrice, TREND_CONFIRM_AFTER_KST, type StopOverride } from "@/lib/stop-rebase";
+import { findStopOverride, REBASE_STOP_FRACTION, rebasedStopPrice, REBASED_TREND_RULE, type StopOverride } from "@/lib/stop-rebase";
 
 /**
  * One-time, auditable import of KIS VTS fills that the pre-2026-09-11 dashboard
@@ -125,9 +125,9 @@ export function rebaseImportedStops(now = new Date()) {
       averagePrice: lot.averagePrice, originalStopPrice, referencePrice: position.currentPrice,
       referencePriceSource: "KIS_BALANCE_PRPR", referenceDate: kstDay, referenceAt: position.lastSyncedAt,
       stopFraction: REBASE_STOP_FRACTION, stopPrice: rebasedStopPrice(position.currentPrice),
-      trendConfirmAfterKst: TREND_CONFIRM_AFTER_KST, createdAt: now.toISOString() };
+      trendExitRule: REBASED_TREND_RULE, createdAt: now.toISOString() };
     state.stopOverrides.push(override); created.push(override);
-    addLog("SIGNAL", `재설정 손절 적용 ${override.stockName}(${override.stockCode}): 평균 ${Math.round(override.averagePrice).toLocaleString("ko-KR")} 기존 손절선 ${Math.round(originalStopPrice).toLocaleString("ko-KR")} 이미 하회 → 기준가 ${override.referencePrice.toLocaleString("ko-KR")}(${kstDay}) × 0.95 = 새 손절선 ${override.stopPrice.toLocaleString("ko-KR")}. 개장 즉시 손절 없음, ${TREND_CONFIRM_AFTER_KST} 이후 20일선 아래 확인 또는 새 손절선 도달 시 전량 매도`);
+    addLog("SIGNAL", `재설정 손절 적용 ${override.stockName}(${override.stockCode}): 평균 ${Math.round(override.averagePrice).toLocaleString("ko-KR")} 기존 손절선 ${Math.round(originalStopPrice).toLocaleString("ko-KR")} 이미 하회 → 기준가 ${override.referencePrice.toLocaleString("ko-KR")}(${kstDay}) × 0.95 = 새 손절선 ${override.stopPrice.toLocaleString("ko-KR")}. 개장 즉시 손절 없음. 새 손절선 도달(장중) 또는 일봉 종가가 직전 10거래일 저점 아래(다음 장) 시 전량 매도`);
   }
   if (created.length) saveState();
   return { created, stopOverrides: state.stopOverrides };

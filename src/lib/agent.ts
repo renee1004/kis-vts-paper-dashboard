@@ -14,7 +14,7 @@ import {
   setOverseasBalanceSnapshot,
   state,
 } from "@/lib/store";
-import { enforceRiskExits, executeVtsMockOrder, reconcileAgentOwnedFills } from "@/lib/vts-execution";
+import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills } from "@/lib/vts-execution";
 import { observeResearch, refreshResearchNews } from "@/lib/news-research";
 
 const globalAgent = globalThis as typeof globalThis & {
@@ -71,6 +71,9 @@ async function analyzeWatchlistItem(
   }
   item.analysis = signal.side;
   item.trendMa = signal.trendMa ?? null;
+  if (!isUs && item.candleStatus === "SUCCESS") {
+    try { evaluateRebasedTrend(item, bars); } catch { addLog("RISK", "재설정 손절 일봉 평가 실패", "WARN"); }
+  }
   item.confidence = signal.confidence;
   item.buyScore = signal.buyScore;
   item.sellScore = signal.sellScore;

@@ -675,7 +675,7 @@ export class KisVtsClient {
     const rows = Array.isArray(body.output2) ? body.output2 : [];
     return completedBars(rows.map((raw) => {
       const row = raw as Record<string, unknown>;
-      return { date: safeText(row.stck_bsop_date), close: safeNumber(row.stck_clpr) };
+      return { date: safeText(row.stck_bsop_date), close: safeNumber(row.stck_clpr), low: safeNumber(row.stck_lwpr) };
     }), domesticMarketDate());
   }
 

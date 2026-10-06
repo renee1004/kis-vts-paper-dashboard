@@ -117,6 +117,8 @@ export interface WatchlistItem {
   currentPrice: number | null;
   /** 20-day mean of completed closes from the last analysis (display/diagnostics). */
   trendMa?: number | null;
+  /** Lowest low of the last 10 completed bars (recent-low line for the next close). */
+  recentLow10?: number | null;
 }
 
 export interface Position {
