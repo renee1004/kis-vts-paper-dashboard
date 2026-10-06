@@ -183,6 +183,7 @@ function migrateVtsOrder(order: Partial<VtsOrder> & Pick<VtsOrder, "id" | "stock
     stopFraction: order.stopFraction,
     strategyVersion: order.strategyVersion,
     signalDate: order.signalDate,
+    importSource: order.importSource,
   };
 }
 

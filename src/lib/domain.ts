@@ -212,6 +212,8 @@ export interface VtsOrder {
   stopFraction?: number;
   strategyVersion?: string;
   signalDate?: string;
+  /** Set only on rows imported from KIS fill history (auditable, reversible). */
+  importSource?: string;
 }
 
 export interface AgentOwnedPosition {

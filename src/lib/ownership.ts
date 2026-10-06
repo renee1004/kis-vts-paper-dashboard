@@ -3,6 +3,13 @@ import type { VtsOrder, TradingMarket } from "./domain";
 export const isPending = (order: VtsOrder) =>
   ["SUBMITTED", "PARTIALLY_FILLED", "UNKNOWN"].includes(order.status);
 
+// KIS returns the same order number zero-padded on order acceptance ("0000038733")
+// and unpadded in the overseas fill inquiry ("38733"). Compare numerically.
+export const sameKisOrderNo = (a: string | null | undefined, b: string | null | undefined) => {
+  const norm = (v: string | null | undefined) => String(v ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  return norm(a) !== "" && norm(a) === norm(b);
+};
+
 export interface OwnedLot {
   quantity: number; averagePrice: number; priceVerified: boolean;
   positionId: string | null; partialTaken: boolean; stopFraction: number;

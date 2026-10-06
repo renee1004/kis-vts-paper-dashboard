@@ -6,7 +6,7 @@ import { evaluatePaperOrder } from "@/lib/rule-engine";
 import { getOrderDecision } from "@/lib/safety";
 import { usMarketDate } from "@/lib/market-hours";
 import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
-import { isPending, ownedLot, sellableQuantity } from "@/lib/ownership";
+import { isPending, ownedLot, sameKisOrderNo, sellableQuantity } from "@/lib/ownership";
 import { exitDecision, sizeForRisk, STRATEGY_VERSION } from "@/lib/strategy";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits } from "@/lib/trading-limits";
@@ -211,7 +211,7 @@ export async function reconcileAgentOwnedFills(client: KisVtsClient): Promise<vo
     const executions = first.market === "DOMESTIC" ? await client.getTodayExecutions(first.orderDate)
       : await client.getOverseasTodayExecutions(first.orderDate);
     for (const order of orders) {
-      const execution = executions.find((e) => e.orderDate === order.orderDate && e.orderNo === order.kisOrderNo &&
+      const execution = executions.find((e) => e.orderDate === order.orderDate && sameKisOrderNo(e.orderNo, order.kisOrderNo) &&
         e.stockCode === order.stockCode && (!order.kisBranchNo || !e.branchNo || e.branchNo === order.kisBranchNo));
       if (!execution) { order.status = "UNKNOWN"; order.blockedReason = "FILL_NOT_FOUND_REVIEW_REQUIRED"; continue; }
       order.filledQuantity = Math.max(order.filledQuantity, Math.min(order.quantity, execution.filledQuantity));

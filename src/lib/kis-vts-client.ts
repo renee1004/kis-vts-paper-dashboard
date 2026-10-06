@@ -466,14 +466,15 @@ export class KisVtsClient {
       }),
       null,
     );
-    // VTTS3012R: output1 is account summary, output2 is the position list.
-    const rows = records(body.output2);
-    const output1 = Array.isArray(body.output1)
-      ? body.output1[0]
-      : body.output1;
+    // VTTS3012R: output1 is the position list, output2 is the account summary
+    // (verified against KIS VTS on 2026-10-06; the swapped read showed 0 US holdings).
+    const rows = records(body.output1);
+    const output2 = Array.isArray(body.output2)
+      ? body.output2[0]
+      : body.output2;
     const summary =
-      output1 && typeof output1 === "object"
-        ? (output1 as Record<string, unknown>)
+      output2 && typeof output2 === "object"
+        ? (output2 as Record<string, unknown>)
         : {};
 
     const now = new Date().toISOString();
@@ -492,7 +493,7 @@ export class KisVtsClient {
           id: stockCode,
           market: "US_NASDAQ" as const,
           stockCode,
-          stockName: safeText(row.prdt_name, stockCode),
+          stockName: safeText(row.ovrs_item_name ?? row.prdt_name, stockCode),
           exchange: "NASD" as const,
           quantity,
           averagePrice,
