@@ -10,7 +10,7 @@ export const US_ORDER_CAP_USD = 3_000;
 export function marketRiskLimits(market: TradingMarket) {
   return market === "US_NASDAQ"
     ? { orderCapKrw: US_ORDER_CAP_USD * USD_KRW_SAFETY_RATE, nameFraction: 0.15, riskFraction: 0.012 }
-    : { orderCapKrw: 300_000, nameFraction: 0.10, riskFraction: 0.005 };
+    : { orderCapKrw: 3_000_000, nameFraction: 0.10, riskFraction: 0.005 };
 }
 export function parseOverseasBuyingPower(output: Record<string, unknown>) {
   const number = (value: unknown) => typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value.replaceAll(",", "")) : NaN;

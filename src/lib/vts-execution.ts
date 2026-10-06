@@ -225,7 +225,7 @@ export async function reconcileAgentOwnedFills(client: KisVtsClient): Promise<vo
   rebuildAgentOwnedPositions(); saveState();
 }
 export const VTS_ORDER_LIMITS = { maxPositions: MAX_POSITIONS, maxNameFraction: 0.10, firstTrancheFraction: 0.10,
-  principalKrw: PRINCIPAL_KRW, dailyBuyCapKrw: DAILY_BUY_CAP, perOrderCapKrw: 300_000, riskPerTradeFraction: 0.005,
+  principalKrw: PRINCIPAL_KRW, dailyBuyCapKrw: DAILY_BUY_CAP, perOrderCapKrw: marketRiskLimits("DOMESTIC").orderCapKrw, riskPerTradeFraction: 0.005,
   usPerOrderCapUsd: US_ORDER_CAP_USD, usMaxNameFraction: marketRiskLimits("US_NASDAQ").nameFraction,
   usRiskPerTradeFraction: marketRiskLimits("US_NASDAQ").riskFraction,
   usdKrwSafetyRate: USD_KRW_SAFETY_RATE, sellScope: "AGENT_CREATED_ONLY" as const, usOrderType: "LIMIT" as const,
