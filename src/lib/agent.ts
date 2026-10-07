@@ -155,11 +155,12 @@ export async function runAgentCycle(): Promise<void> {
       addLog("RISK", "손절·익절 점검에 실패했습니다.", "WARN");
     }
 
-    for (const item of state.watchlist) {
+    // Snapshot: the dashboard may add/remove entries while this cycle awaits KIS calls.
+    for (const item of [...state.watchlist]) {
       await analyzeWatchlistItem(client, item);
     }
 
-    for (const item of state.usWatchlist) {
+    for (const item of [...state.usWatchlist]) {
       await analyzeWatchlistItem(client, item);
     }
 

@@ -101,12 +101,16 @@ export interface PublicKisConfig {
   isDemo: true;
 }
 
+export type WatchlistSource = "DEFAULT" | "USER";
+
 export interface WatchlistItem {
   id: string;
   market: TradingMarket;
   stockCode: string;
   stockName: string;
   currency: OrderCurrency;
+  /** DEFAULT = built-in list, USER = added from the dashboard or imported. */
+  source?: WatchlistSource;
   candleStatus: "PENDING" | "SUCCESS" | "FAILED";
   priceStatus: "PENDING" | "SUCCESS" | "FAILED";
   analysis: "BUY" | "SELL" | "HOLD";

@@ -31,14 +31,14 @@ const STATE_FILE = path.join(DATA_DIR, "state.json");
 const KEY_FILE = path.join(DATA_DIR, "master.key");
 const SECRET_FILE = path.join(DATA_DIR, "kis-config.enc");
 
-const DEFAULT_WATCHLIST: Array<[string, string]> = [
+export const DEFAULT_WATCHLIST: Array<[string, string]> = [
   ["005930", "삼성전자"],
   ["000660", "SK하이닉스"],
   ["035420", "NAVER"],
   ["005380", "현대차"],
   ["051910", "LG화학"],
   ["006400", "삼성SDI"],
-  ["003670", "포스코홀딩스"],
+  ["003670", "포스코퓨처엠"],
   ["000720", "현대건설"],
   ["069500", "KODEX 200"],
   ["005935", "삼성전자우"],
@@ -75,6 +75,7 @@ function initialDomesticWatchlist(): WatchlistItem[] {
     stockCode,
     stockName,
     currency: "KRW" as const,
+    source: "DEFAULT" as const,
     candleStatus: "PENDING",
     priceStatus: "PENDING",
     analysis: "HOLD",
@@ -93,6 +94,7 @@ function initialUsWatchlist(): WatchlistItem[] {
     stockCode,
     stockName,
     currency: "USD" as const,
+    source: "DEFAULT" as const,
     candleStatus: "PENDING",
     priceStatus: "PENDING",
     analysis: "HOLD",
@@ -130,6 +132,19 @@ function initialState(): RuntimeState {
   };
 }
 
+// 003670 is POSCO Future M; an earlier default list mislabeled it as POSCO Holdings (005490).
+const NAME_CORRECTIONS: Record<string, [string, string]> = { "003670": ["포스코홀딩스", "포스코퓨처엠"] };
+
+export function correctedStockName(stockCode: string, stockName: string): string {
+  const fix = NAME_CORRECTIONS[stockCode];
+  return fix && stockName === fix[0] ? fix[1] : stockName;
+}
+
+function defaultSource(market: TradingMarket, stockCode: string): "DEFAULT" | "USER" {
+  const defaults = market === "DOMESTIC" ? DEFAULT_WATCHLIST : US_NASDAQ_WATCHLIST;
+  return defaults.some(([code]) => code === stockCode) ? "DEFAULT" : "USER";
+}
+
 function migrateWatchlistItem(
   item: Partial<WatchlistItem> & { stockCode: string; stockName: string },
   market: TradingMarket,
@@ -139,8 +154,9 @@ function migrateWatchlistItem(
     id: item.id ?? crypto.randomUUID(),
     market: item.market ?? market,
     stockCode: item.stockCode,
-    stockName: item.stockName,
+    stockName: correctedStockName(item.stockCode, item.stockName),
     currency: item.currency ?? currency,
+    source: item.source ?? defaultSource(market, item.stockCode),
     candleStatus: item.candleStatus ?? "PENDING",
     priceStatus: item.priceStatus ?? "PENDING",
     analysis: item.analysis ?? "HOLD",
@@ -229,14 +245,14 @@ function migrateRuntimeState(parsed: Partial<RuntimeState>): RuntimeState {
   };
 
   const watchlist =
-    parsed.watchlist?.length
+    Array.isArray(parsed.watchlist)
       ? parsed.watchlist.map((item) =>
           migrateWatchlistItem(item, "DOMESTIC", "KRW"),
         )
       : base.watchlist;
 
   const usWatchlist =
-    parsed.usWatchlist?.length
+    Array.isArray(parsed.usWatchlist)
       ? parsed.usWatchlist.map((item) =>
           migrateWatchlistItem(item, "US_NASDAQ", "USD"),
         )
@@ -307,6 +323,12 @@ export const state = globalState.__vtsPaperState ?? loadState();
 globalState.__vtsPaperState = state;
 // A state object created before this field existed (dev hot reload) must still be usable.
 state.stopOverrides ??= [];
+// Same for watchlist source labels and name corrections on a hot-reloaded state.
+for (const item of state.watchlist) {
+  item.source ??= defaultSource("DOMESTIC", item.stockCode);
+  item.stockName = correctedStockName(item.stockCode, item.stockName);
+}
+for (const item of state.usWatchlist) item.source ??= defaultSource("US_NASDAQ", item.stockCode);
 
 export function saveState(): void {
   ensureDataDir();

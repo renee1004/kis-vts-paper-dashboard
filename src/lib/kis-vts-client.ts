@@ -635,6 +635,31 @@ export class KisVtsClient {
     });
   }
 
+  /**
+   * Read-only probe of KIS 관심종목 그룹조회 (HHKCM113004C7) against the VTS host.
+   * Bypasses get() on purpose: an unsupported endpoint must not overwrite lastError.
+   * USER_ID is the HTS ID, which this paper config does not store.
+   */
+  async probeInterestGroups(userId = ""): Promise<{ httpStatus: number | null; rt_cd: string; msg_cd: string; msg1: string; groups: number }> {
+    const token = await this.ensureToken();
+    await throttle();
+    try {
+      const params = new URLSearchParams({ TYPE: "1", FID_ETC_CLS_CODE: "00", USER_ID: userId });
+      const response = await fetch(`${VTS_BASE_URL}/uapi/domestic-stock/v1/quotations/intstock-grouplist?${params}`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}`, appkey: this.secrets!.appKey, appsecret: this.secrets!.appSecret,
+          tr_id: "HHKCM113004C7", custtype: "P" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      const body = await readJsonSafe(response);
+      return { httpStatus: response.status, rt_cd: safeText(body.rt_cd), msg_cd: safeText(body.msg_cd), msg1: safeText(body.msg1),
+        groups: Array.isArray(body.output2) ? body.output2.length : 0 };
+    } catch {
+      return { httpStatus: null, rt_cd: "", msg_cd: "", msg1: "NETWORK_ERROR", groups: 0 };
+    }
+  }
+
   async getPrice(stockCode: string): Promise<number> {
     const body = await this.get(
       "domesticPrice",

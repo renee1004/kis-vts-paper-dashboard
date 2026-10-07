@@ -217,12 +217,89 @@ function formatPrice(value: number | null, currency: string): string {
   return `${value.toLocaleString()}원`;
 }
 
+function WatchlistEditor({
+  market,
+  onChanged,
+}: {
+  market: "DOMESTIC" | "US_NASDAQ";
+  onChanged: (message: string) => void | Promise<void>;
+}) {
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const response = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ market, stockCode: code, stockName: name || undefined }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setCode("");
+        setName("");
+      }
+      await onChanged(result.success ? result.message ?? "추가되었습니다." : result.error ?? "추가 실패");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form onSubmit={submit} className="mb-3 flex flex-wrap items-end gap-2">
+      <Input
+        className="w-32"
+        placeholder={market === "DOMESTIC" ? "종목코드 6자리" : "NASDAQ 티커"}
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        maxLength={market === "DOMESTIC" ? 6 : 5}
+      />
+      <Input
+        className="w-40"
+        placeholder="종목명(선택)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={40}
+      />
+      <Button type="submit" size="sm" disabled={busy || !code.trim()}>
+        {busy ? "시세 확인 중…" : "관심종목 추가"}
+      </Button>
+      <span className="text-xs text-slate-500">
+        KIS 시세 조회로 검증 후 추가 · 기존 종목과 같은 분석·한도 규칙 적용
+      </span>
+    </form>
+  );
+}
+
+async function deleteWatchlistItem(
+  market: string,
+  stockCode: string,
+  stockName: string,
+): Promise<string | null> {
+  if (!window.confirm(`${stockName}(${stockCode})를 관심종목에서 삭제할까요?`)) return null;
+  const send = (force: boolean) =>
+    fetch("/api/watchlist", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ market, stockCode, force }),
+    }).then((r) => r.json());
+  let result = await send(false);
+  if (result.error === "HELD_POSITION_CONFIRM_REQUIRED") {
+    if (!window.confirm(`${result.message}\n그래도 삭제할까요?`)) return null;
+    result = await send(true);
+  }
+  return result.success ? result.message ?? "삭제되었습니다." : result.error ?? "삭제 실패";
+}
+
 function WatchlistTable({
   items,
   currency,
+  onChanged,
 }: {
   items: Array<Record<string, string | number | null>>;
   currency: "KRW" | "USD";
+  onChanged?: (message: string) => void | Promise<void>;
 }) {
   return (
     <Table>
@@ -235,6 +312,7 @@ function WatchlistTable({
           <TableHead>조건 충족 점수</TableHead>
           <TableHead>BUY/SELL</TableHead>
           <TableHead>차단 사유</TableHead>
+          {onChanged && <TableHead />}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -244,6 +322,12 @@ function WatchlistTable({
               <div className="font-medium">{String(item.stockName)}</div>
               <div className="font-mono text-xs text-slate-500">
                 {String(item.stockCode)}
+                <Badge
+                  variant={item.source === "USER" ? "default" : "outline"}
+                  className="ml-1 px-1 py-0 text-[10px]"
+                >
+                  {item.source === "USER" ? "사용자" : "기본"}
+                </Badge>
               </div>
             </TableCell>
             <TableCell>
@@ -265,6 +349,26 @@ function WatchlistTable({
             <TableCell className="max-w-40 text-xs text-slate-500">
               {String(item.blockedReason)}
             </TableCell>
+            {onChanged && (
+              <TableCell>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-rose-600"
+                  onClick={async () => {
+                    const message = await deleteWatchlistItem(
+                      String(item.market),
+                      String(item.stockCode),
+                      String(item.stockName),
+                    );
+                    if (message) await onChanged(message);
+                  }}
+                >
+                  삭제
+                </Button>
+              </TableCell>
+            )}
           </TableRow>
         ))}
       </TableBody>
@@ -339,6 +443,11 @@ export function Dashboard() {
     } finally {
       setAction("");
     }
+  }
+
+  async function onWatchlistChanged(text: string) {
+    setMessage(text);
+    await refresh();
   }
 
   async function saveConfig(event: FormEvent) {
@@ -681,7 +790,8 @@ export function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
-                <WatchlistTable items={data.agent.watchlist} currency="KRW" />
+                <WatchlistEditor market="DOMESTIC" onChanged={onWatchlistChanged} />
+                <WatchlistTable items={data.agent.watchlist} currency="KRW" onChanged={onWatchlistChanged} />
               </CardContent>
             </Card>
 
@@ -689,14 +799,15 @@ export function Dashboard() {
               <CardHeader>
                 <CardTitle className="text-base">미국(NASDAQ) 관심종목 분석</CardTitle>
                 <CardDescription>
-                  AAPL, NVDA, AMD, AMZN, MSFT · 가격 USD · VTS 지정가(VTTT1002U/VTTT1001U)
+                  {(data.agent.usWatchlist ?? []).map((i) => String(i.stockCode)).join(", ")} · NASDAQ 상장만 지원 · 가격 USD · VTS 지정가(VTTT1002U/VTTT1001U)
                   · 장 상태: {data.health.safety.usMarketStatus ?? "CLOSED"}
                   · {data.health.safety.usMarketHoursKo ??
                     "미국 동부시간(ET) 09:30–16:00"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
-                <WatchlistTable items={data.agent.usWatchlist ?? []} currency="USD" />
+                <WatchlistEditor market="US_NASDAQ" onChanged={onWatchlistChanged} />
+                <WatchlistTable items={data.agent.usWatchlist ?? []} currency="USD" onChanged={onWatchlistChanged} />
               </CardContent>
             </Card>
 
