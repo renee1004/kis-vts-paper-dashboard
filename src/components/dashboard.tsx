@@ -70,6 +70,7 @@ interface DashboardData {
       usMarketHoursKo?: string;
     };
     version: { gitCommitSha: string; gitBranch: string };
+    access?: { localClient: boolean };
   };
   agent: {
     strategy?: {
@@ -463,6 +464,7 @@ export function Dashboard() {
   }
 
   const safety = data.health.safety;
+  const localClient = data.health.access?.localClient ?? false;
   const stats = data.agent.lastCycleSummary;
 
   return (
@@ -589,14 +591,21 @@ export function Dashboard() {
                         kis:setup 을 다시 실행하세요.
                       </p>
                     )}
-                    <Button
-                      className="mt-2 w-full"
-                      type="button"
-                      variant="outline"
-                      onClick={() => setEditingConfig(true)}
-                    >
-                      계좌·키 다시 입력
-                    </Button>
+                    {localClient ? (
+                      <Button
+                        className="mt-2 w-full"
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEditingConfig(true)}
+                      >
+                        계좌·키 다시 입력
+                      </Button>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">
+                        원격 접속(조회 전용): 계좌·키 변경은 PC의 localhost:3939
+                        에서만 가능합니다.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <form className="space-y-3" onSubmit={saveConfig}>
@@ -708,6 +717,7 @@ export function Dashboard() {
                     })
                   }
                   disabled={
+                    !localClient ||
                     !data.health.kis.configured ||
                     safety.effectiveSafetyMode === "VTS_AUTO_ARMED" ||
                     Boolean(action)
@@ -718,6 +728,8 @@ export function Dashboard() {
                 <p className="-mt-1 text-xs text-slate-500">
                   {safety.effectiveSafetyMode === "VTS_AUTO_ARMED"
                     ? "이미 활성화되어 있습니다."
+                    : !localClient
+                      ? "원격 접속: 활성화·시작은 PC(localhost)에서만 가능합니다. 안전잠금·중지는 가능합니다."
                     : data.health.kis.configured
                       ? "누르면 연결 확인, 활성화, 에이전트 시작까지 진행합니다."
                       : "먼저 KIS 설정을 저장해야 합니다."}
@@ -744,6 +756,7 @@ export function Dashboard() {
                   <Button
                     onClick={() => void post("/api/agent/start")}
                     disabled={
+                      !localClient ||
                       safety.effectiveSafetyMode !== "VTS_AUTO_ARMED" ||
                       data.agent.isRunning
                     }

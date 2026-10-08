@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { startAgent } from "@/lib/agent";
 import { computeSafetyMode, getPublicKisConfig } from "@/lib/safety";
+import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!isLocalRequest(request)) return localOnlyResponse();
   if (!getPublicKisConfig().configured) {
     return NextResponse.json(
       { success: false, error: "KIS_NOT_CONFIGURED" },

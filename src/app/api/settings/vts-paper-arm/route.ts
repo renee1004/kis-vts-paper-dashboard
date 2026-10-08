@@ -8,12 +8,15 @@ import {
   markVtsReady,
 } from "@/lib/safety";
 import { state } from "@/lib/store";
+import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     confirm?: string;
   };
+  // PREPARE is a read-only connection check; arming/starting stays on the PC.
+  if (body.action !== "PREPARE" && !isLocalRequest(request)) return localOnlyResponse();
 
   try {
     let started = false;

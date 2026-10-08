@@ -10,6 +10,7 @@ import {
   usRegularHoursDescriptionKo,
 } from "@/lib/market-hours";
 import { state } from "@/lib/store";
+import { isLocalRequest } from "@/lib/local-request";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ function gitValue(args: string[], fallback: string): string {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const kis = getPublicKisConfig();
   const domesticDecision = getOrderDecision("DOMESTIC");
   const overseasDecision = getOrderDecision("US_NASDAQ");
@@ -34,6 +35,8 @@ export async function GET() {
   return NextResponse.json({
     success: true,
     runtime: process.env.NODE_ENV === "production" ? "production" : "local",
+    // Remote (phone/LAN/Tailscale) viewers are read-only; see lib/local-request.
+    access: { localClient: isLocalRequest(request) },
     database: {
       connected: true,
       provider: "encrypted-local-fallback",

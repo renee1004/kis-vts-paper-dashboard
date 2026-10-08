@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { VTS_BASE_URL } from "@/lib/domain";
+import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
 import { forceSafetyLock, getPublicKisConfig } from "@/lib/safety";
 import { clearTokenCache } from "@/lib/kis-vts-client";
 import { resetDiagnostics, saveSecrets } from "@/lib/store";
@@ -18,6 +19,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isLocalRequest(request)) return localOnlyResponse();
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(

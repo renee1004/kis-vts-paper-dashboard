@@ -8,6 +8,7 @@ import {
   rebaseImportedStops,
   revertPre0911Import,
 } from "@/lib/fill-import";
+import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,6 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isLocalRequest(request)) return localOnlyResponse();
   const origin = request.headers.get("origin");
   let sameOrigin = !origin;
   try {

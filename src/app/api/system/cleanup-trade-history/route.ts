@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resetHistory, state } from "@/lib/store";
+import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
 
 export async function GET() {
   return NextResponse.json({
@@ -21,6 +22,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isLocalRequest(request)) return localOnlyResponse();
   const body = (await request.json().catch(() => ({}))) as { confirm?: string };
   if (body.confirm !== "RESET_TRADE_AND_LOG_HISTORY") {
     return NextResponse.json(
