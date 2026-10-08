@@ -380,6 +380,9 @@ function WatchlistTable({
 export function Dashboard() {
   const [data, setData] = useState<DashboardData>(initial);
   const [loading, setLoading] = useState(true);
+  // False during SSR and the first client render, so both render the same
+  // neutral placeholder instead of the credential form (see KIS API 설정).
+  const [healthLoaded, setHealthLoaded] = useState(false);
   const [action, setAction] = useState("");
   const [message, setMessage] = useState("");
   const [editingConfig, setEditingConfig] = useState(false);
@@ -408,6 +411,7 @@ export function Dashboard() {
         limits: orders.data?.limits ?? null,
         blockedReasonCounts: orders.data?.blockedReasonCounts ?? {},
       });
+      setHealthLoaded(true);
     } catch {
       setMessage("대시보드 상태를 불러오지 못했습니다.");
     } finally {
@@ -558,7 +562,12 @@ export function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {data.health.kis.configured && !editingConfig ? (
+                {!healthLoaded ? (
+                  // The password inputs are never server-rendered: iOS AutoFill,
+                  // password managers and in-app browsers add attributes to them
+                  // before hydration (attribute hydration mismatch on iPhone).
+                  <p className="text-sm text-slate-500">KIS 설정 상태 확인 중…</p>
+                ) : data.health.kis.configured && !editingConfig ? (
                   <div className="space-y-2 text-sm">
                     {[
                       ["appKeyLoaded", data.health.kis.appKeyLoaded],
@@ -607,6 +616,11 @@ export function Dashboard() {
                       </p>
                     )}
                   </div>
+                ) : !localClient ? (
+                  <p className="text-xs text-slate-500">
+                    원격 접속(조회 전용): 계좌·키 입력은 PC의 localhost:3939
+                    에서만 가능합니다.
+                  </p>
                 ) : (
                   <form className="space-y-3" onSubmit={saveConfig}>
                     <div className="space-y-1">
