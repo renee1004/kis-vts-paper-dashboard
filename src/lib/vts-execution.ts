@@ -1,7 +1,10 @@
 import "server-only";
 import crypto from "node:crypto";
+import path from "node:path";
+import { retainRecentBlockedOrders } from "@/lib/order-archive";
 import { TradingMarket, USD_KRW_SAFETY_RATE, VtsOrder, WatchlistItem, buyNotionalKrw } from "@/lib/domain";
-import { KisVtsClient } from "@/lib/kis-vts-client";
+import { KisOrderRejectedError, KisVtsClient } from "@/lib/kis-vts-client";
+import { rejectionBlock } from "@/lib/order-retry";
 import { evaluatePaperOrder } from "@/lib/rule-engine";
 import { getOrderDecision } from "@/lib/safety";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
@@ -34,8 +37,8 @@ export function todayBuyNotional(): number {
 }
 function persist(order: VtsOrder): VtsOrder {
   if (!state.vtsOrders.some((o) => o.id === order.id)) state.vtsOrders.unshift(order);
-  let count = 0;
-  state.vtsOrders = state.vtsOrders.filter((o) => o.status !== "BLOCKED" || ++count <= 100);
+  state.vtsOrders = retainRecentBlockedOrders(state.vtsOrders,
+    process.env.DATA_DIR || path.join(process.cwd(), ".data"));
   saveState(); return order;
 }
 function makeOrder(input: ExecuteVtsOrderInput, quantity: number): VtsOrder {
@@ -155,8 +158,8 @@ export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVt
     const newsGate = researchBuyNewsBlock(input.market, input.stockCode);
     if (newsGate.block) {
       const detail = newsGate.headline ?? newsGate.reason;
-      addLog("SIGNAL", `NEWS_DEFEND ${input.market} ${input.stockCode} ${detail}`, "WARN");
-      return blocked(input, "NEWS_DEFEND");
+      addLog("SIGNAL", `${newsGate.blockedReason} ${input.market} ${input.stockCode} ${detail}`, "WARN");
+      return blocked(input, newsGate.blockedReason ?? "NEWS_ANALYSIS_UNAVAILABLE");
     }
   }
   return quantity > 0 ? submitOrder(client, input, quantity) : blocked(input, "POSITION_OR_DAILY_BUDGET_CAP");
@@ -192,6 +195,8 @@ async function submitOrder(client: KisVtsClient, input: ExecuteVtsOrderInput, qu
     const gate = getOrderDecision(input.market);
     if (!gate.allowed || !state.isRunning || !freshBalance(input.market)) return blocked(input, "FINAL_SAFETY_GATE");
     if (state.vtsOrders.some((o) => o.market === input.market && o.stockCode === input.stockCode && isPending(o))) return blocked(input, "ORDER_ALREADY_PENDING");
+    const retryBlock = rejectionBlock(state.vtsOrders, { ...input, side: input.side === "SELL" ? "SELL" : "BUY" }, marketDate(input.market));
+    if (retryBlock) return blocked(input, retryBlock);
     if (input.side === "SELL") quantity = Math.min(quantity, sellableQuantity(state.vtsOrders, input.market,
       input.stockCode, positionFor(input)?.quantity ?? 0));
     if (!Number.isInteger(quantity) || quantity < 1) return blocked(input, "NO_SELLABLE_QUANTITY");
@@ -207,7 +212,12 @@ async function submitOrder(client: KisVtsClient, input: ExecuteVtsOrderInput, qu
       const rejected = error instanceof Error && ["KIS_VTS_ORDER_REJECTED", "ORDER_GATE_CLOSED"].includes(error.message);
       order.status = rejected ? "REJECTED" : "UNKNOWN";
       order.blockedReason = rejected ? "KIS_VTS_ORDER_REJECTED" : "CHECK_BROKER_BEFORE_RETRY";
+      if (error instanceof KisOrderRejectedError) order.brokerError = error.diagnostic;
+      if (error instanceof Error && error.message === "ORDER_GATE_CLOSED") order.blockedReason = "ORDER_GATE_CLOSED";
       addLog("RISK", rejected ? "모의주문 거절" : "주문 결과 미확인: 증권사 체결 확인 전 재주문 차단", "WARN");
+      if (rejected && rejectionBlock(state.vtsOrders, order, order.orderDate) === "BROKER_REJECTION_REVIEW_REQUIRED") {
+        addLog("RISK", `${order.stockCode} ${order.side}: 증권사 거절 3회. 오늘 자동 재주문 중단, 증권사 주문 상태와 거절 원인 확인 필요`, "ERROR");
+      }
     }
     return persist(order);
   } finally { submitting.delete(symbolKey); }

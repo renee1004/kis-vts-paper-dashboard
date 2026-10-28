@@ -61,6 +61,8 @@ check('partial marker survives rebuild and resets after flat/new lot', () => {
 });
 check('expired partial fills count toward buy budget', () => assert.equal(buyNotionalKrw(order({status:'EXPIRED',filledQuantity:3})),300));
 function reset() {
+  const reviewed={newsSide:'HOLD',reason:'종목 뉴스 검토 완료',fresh:true,at:new Date().toISOString(),evidenceIds:[]};
+  global.__newsResearch={version:load('src/lib/news-model.ts').NEWS_VERSION,articles:[],decisions:{'DOMESTIC:005930':reviewed,'DOMESTIC:000660':reviewed}};
   state.isRunning = true; state.prepared = true;
   state.settings = {...DEFAULT_SAFETY_SETTINGS,killSwitchEnabled:false,autoDomesticOrderEnabled:true,autoOverseasOrderEnabled:true,autoExitEnabled:true,pipelineTestEnabled:true,allowStrategyTestOrder:true};
   state.vtsOrders=[];state.agentOwnedPositions=[];state.positions=[];state.overseasPositions=[];

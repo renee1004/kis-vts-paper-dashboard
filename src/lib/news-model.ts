@@ -24,7 +24,7 @@ const aliases: Record<string, string[]> = {
   "005930": ["삼성전자", "Samsung Electronics"], "005935": ["삼성전자우"],
   "000660": ["SK하이닉스", "SK hynix"], "035420": ["네이버", "NAVER"],
   "005380": ["현대차", "현대자동차", "Hyundai Motor"], "051910": ["LG화학", "LG Chem"],
-  "006400": ["삼성SDI", "Samsung SDI"], "003670": ["포스코홀딩스", "POSCO Holdings"],
+  "006400": ["삼성SDI", "Samsung SDI"], "003670": ["포스코퓨처엠", "POSCO Future M"],
   "000720": ["현대건설"], "069500": ["KODEX 200"],
   AAPL: ["Apple", "애플"], NVDA: ["Nvidia", "엔비디아"],
   AMD: ["AMD", "Advanced Micro Devices"], AMZN: ["Amazon", "아마존"],

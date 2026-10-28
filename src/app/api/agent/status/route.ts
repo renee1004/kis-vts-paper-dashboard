@@ -11,6 +11,7 @@ import {
 import { state } from "@/lib/store";
 import { effectiveStops, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits";
+import { sevenDayPerformance } from "@/lib/performance-history";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,11 @@ export async function GET() {
         unresolvedOrders: state.vtsOrders.filter((o) => o.status === "UNKNOWN").length,
         costAssumptionBpsPerSide: 15,
         fxAssumption: "FIXED_1500_NOT_ACTUAL_FX",
+        performanceScope: "ALL_TRACKED_FILLS_INCLUDING_LEGACY_NOT_WHOLE_ACCOUNT",
+        sevenDayPerformance: sevenDayPerformance(state.performanceHistory, valuation.valid ? {
+          at: new Date().toISOString(), pnlKrw: valuation.pnl,
+          budgetKrw: VTS_ORDER_LIMITS.principalKrw, strategyVersion: VTS_ORDER_LIMITS.strategyVersion,
+        } : null),
       },
       isRunning: state.isRunning,
       lastCycleAt: state.lastCycleAt,

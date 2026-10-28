@@ -6,7 +6,7 @@ import { assessNews, NEWS_VERSION, targetKey, type NewsArticle, type NewsFeed, t
 import { feedSpecs, fetchNewsFeed } from "@/lib/news-feeds";
 import { advanceShadow, bookSummary, emptyBook, type ResearchObservation, type ShadowBook } from "@/lib/news-shadow";
 import type { StrategySignal } from "@/lib/strategy";
-import { newsDefendBuyVerdict } from "@/lib/news-defend";
+import { newsCheckedBuyVerdict } from "@/lib/news-defend";
 
 const finite = z.number().finite();
 const positive = finite.positive(), nonnegative = finite.nonnegative();
@@ -136,17 +136,16 @@ export function researchBuyNewsBlock(
   market: "DOMESTIC" | "US_NASDAQ",
   stockCode: string,
   nowMs: number = Date.now(),
-): ReturnType<typeof newsDefendBuyVerdict> & { headline: string | null } {
-  const allow = { block: false as const, blockedReason: null, reason: "", headline: null };
+): ReturnType<typeof newsCheckedBuyVerdict> & { headline: string | null } {
   let current: ResearchState;
   try {
     current = getState();
   } catch {
-    return allow;
+    return { ...newsCheckedBuyVerdict(null, nowMs), headline: null };
   }
   const decision = current.decisions[`${market}:${stockCode}`];
-  if (!decision) return allow;
-  const verdict = newsDefendBuyVerdict({
+  if (!decision) return { ...newsCheckedBuyVerdict(null, nowMs), headline: null };
+  const verdict = newsCheckedBuyVerdict({
     newsSide: decision.newsSide,
     reason: decision.reason,
     fresh: decision.fresh,

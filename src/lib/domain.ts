@@ -222,6 +222,7 @@ export interface VtsOrder {
   signalDate?: string;
   /** Set only on rows imported from KIS fill history (auditable, reversible). */
   importSource?: string;
+  brokerError?: KisLastError;
 }
 
 export interface AgentOwnedPosition {

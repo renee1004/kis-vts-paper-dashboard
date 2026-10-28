@@ -14,7 +14,9 @@ import {
   setOverseasBalanceSnapshot,
   state,
 } from "@/lib/store";
-import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills } from "@/lib/vts-execution";
+import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills, strategyValuation } from "@/lib/vts-execution";
+import { recordPerformance } from "@/lib/performance-history";
+import { PAPER_CAPITAL_KRW } from "@/lib/trading-limits";
 import { observeResearch, refreshResearchNews } from "@/lib/news-research";
 
 const globalAgent = globalThis as typeof globalThis & {
@@ -170,6 +172,10 @@ export async function runAgentCycle(): Promise<void> {
   } finally {
     globalAgent.__vtsAgentRunningCycle = false;
     state.lastCycleAt = new Date().toISOString();
+    const valuation = strategyValuation();
+    if (valuation.valid) state.performanceHistory = recordPerformance(state.performanceHistory, {
+      at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: STRATEGY_VERSION,
+    });
     saveState();
   }
 }

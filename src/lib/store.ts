@@ -3,6 +3,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { ownedLot } from "@/lib/ownership";
 import type { StopOverride } from "@/lib/stop-rebase";
+import type { PerformancePoint } from "@/lib/performance-history";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -45,6 +46,7 @@ export const DEFAULT_WATCHLIST: Array<[string, string]> = [
 ];
 
 interface RuntimeState {
+  performanceHistory: PerformancePoint[];
   strategyRisk: { date: string; startPnl: number };
   isRunning: boolean;
   sessionId: string | null;
@@ -108,6 +110,7 @@ function initialUsWatchlist(): WatchlistItem[] {
 
 function initialState(): RuntimeState {
   return {
+    performanceHistory: [],
     strategyRisk: { date: "", startPnl: 0 },
     isRunning: false,
     sessionId: null,
@@ -203,6 +206,7 @@ function migrateVtsOrder(order: Partial<VtsOrder> & Pick<VtsOrder, "id" | "stock
     strategyVersion: order.strategyVersion,
     signalDate: order.signalDate,
     importSource: order.importSource,
+    brokerError: order.brokerError,
   };
 }
 
@@ -265,6 +269,7 @@ function migrateRuntimeState(parsed: Partial<RuntimeState>): RuntimeState {
     ...base,
     ...parsed,
     strategyRisk: parsed.strategyRisk ?? base.strategyRisk,
+    performanceHistory: Array.isArray(parsed.performanceHistory) ? parsed.performanceHistory : [],
     isRunning: false,
     sessionId: null,
     prepared: false,
@@ -323,6 +328,7 @@ export const state = globalState.__vtsPaperState ?? loadState();
 globalState.__vtsPaperState = state;
 // A state object created before this field existed (dev hot reload) must still be usable.
 state.stopOverrides ??= [];
+state.performanceHistory ??= [];
 // Same for watchlist source labels and name corrections on a hot-reloaded state.
 for (const item of state.watchlist) {
   item.source ??= defaultSource("DOMESTIC", item.stockCode);

@@ -142,6 +142,12 @@ function bumpPhase(phase: DiagnosticPhase, success: boolean): void {
   if (phase === "vtsOrder") state.lastCycleSummary[`vtsOrder${suffix}`] += 1;
 }
 
+export class KisOrderRejectedError extends Error {
+  constructor(public readonly diagnostic: KisLastError) {
+    super("KIS_VTS_ORDER_REJECTED");
+  }
+}
+
 function recordError(input: {
   phase: DiagnosticPhase;
   stockCode?: string | null;
@@ -386,7 +392,7 @@ export class KisVtsClient {
     }
 
     bumpPhase(phase, false);
-    recordError({
+    const diagnostic = recordError({
       phase,
       stockCode,
       endpointPath,
@@ -395,7 +401,7 @@ export class KisVtsClient {
       body: lastBody,
       fallbackMessage: `HTTP ${lastStatus}`,
     });
-    throw new Error("KIS_VTS_ORDER_REJECTED");
+    throw new KisOrderRejectedError(diagnostic);
   }
 
   async getOverseasPrice(stockCode: string, excd = "NAS"): Promise<number> {
@@ -466,16 +472,8 @@ export class KisVtsClient {
       }),
       null,
     );
-    // VTTS3012R: output1 is the position list, output2 is the account summary
-    // (verified against KIS VTS on 2026-10-06; the swapped read showed 0 US holdings).
+    // Use position-level USD fields consistently; do not mix account summary scope.
     const rows = records(body.output1);
-    const output2 = Array.isArray(body.output2)
-      ? body.output2[0]
-      : body.output2;
-    const summary =
-      output2 && typeof output2 === "object"
-        ? (output2 as Record<string, unknown>)
-        : {};
 
     const now = new Date().toISOString();
     const positions = rows
@@ -512,12 +510,10 @@ export class KisVtsClient {
       (sum, position) => sum + position.evaluation,
       0,
     );
-    const purchaseAmountUsd =
-      safeNumber(summary.frcr_buy_amt_smtl1) ||
-      positions.reduce((sum, position) => sum + position.purchaseAmount, 0);
-    const profitLossUsd =
-      safeNumber(summary.tot_evlu_pfls_amt) ||
-      positions.reduce((sum, position) => sum + position.profitLoss, 0);
+    // Same position scope and currency as stockEvaluationUsd. Broker summary
+    // totals can have another currency/scope and must not be labelled USD.
+    const purchaseAmountUsd = positions.reduce((sum, position) => sum + position.purchaseAmount, 0);
+    const profitLossUsd = positions.reduce((sum, position) => sum + position.profitLoss, 0);
 
     return {
       positions,
