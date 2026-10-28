@@ -12,6 +12,7 @@ import { state } from "@/lib/store";
 import { effectiveStops, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits";
 import { sevenDayPerformance } from "@/lib/performance-history";
+import { MARKET_CALENDAR_INFO, marketSession } from "@/lib/market-calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export async function GET() {
       lastCycleAt: state.lastCycleAt,
       lastCycleSummary: state.lastCycleSummary,
       runtimeDecision: {
+        marketCalendar: { ...MARKET_CALENDAR_INFO, domestic: marketSession("DOMESTIC"), overseas: marketSession("US_NASDAQ") },
         canRunAnalysisNow: kis.configured,
         canPlaceDomesticOrderNow: domesticDecision.allowed,
         canPlaceOverseasOrderNow: overseasDecision.allowed,

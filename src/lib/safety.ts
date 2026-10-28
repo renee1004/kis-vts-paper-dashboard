@@ -2,6 +2,7 @@ import "server-only";
 
 import { PublicKisConfig, SafetyMode, TradingMarket } from "@/lib/domain";
 import { isUsRegularMarketOpen, isDomesticRegularMarketOpen } from "@/lib/market-hours";
+import { marketSession } from "@/lib/market-calendar";
 import { addLog, loadSecrets, saveState, state } from "@/lib/store";
 
 const REAL_HOST_MARKER = "openapi.koreainvestment.com";
@@ -105,6 +106,7 @@ export function getOrderDecision(market: TradingMarket = "DOMESTIC"): {
 } {
   const gate = baseOrderGate();
   if (!gate.allowed) return gate;
+  if (!marketSession(market).known) return { allowed: false, reason: "MARKET_CALENDAR_UNAVAILABLE" };
   if (market === "DOMESTIC" && !isDomesticRegularMarketOpen()) return { allowed: false, reason: "DOMESTIC_MARKET_CLOSED" };
   if (market === "DOMESTIC" && !state.settings.autoDomesticOrderEnabled) {
     return { allowed: false, reason: "AUTO_DOMESTIC_ORDER_DISABLED" };
