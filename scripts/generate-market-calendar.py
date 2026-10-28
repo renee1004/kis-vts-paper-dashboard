@@ -1,6 +1,6 @@
 """Offline app calendar snapshot. Run in a research venv, never with broker keys.
 
-Requires exchange_calendars==4.13.2. Output is bounded to 2026 and must be reviewed
+Requires exchange_calendars==4.13.2. Output is bounded to 2025-2026 and must be reviewed
 against exchange notices before activation. Regenerate after special-session notices.
 """
 import importlib.metadata
@@ -12,14 +12,14 @@ assert importlib.metadata.version('exchange_calendars') == '4.13.2'
 root = Path(__file__).resolve().parents[1]
 calendars = {'DOMESTIC': 'XKRX', 'US_NASDAQ': 'XNYS'}
 out = {'source': 'exchange_calendars', 'version': '4.13.2', 'license': 'Apache-2.0',
-       'from': '20260101', 'through': '20261231',
+       'from': '20250101', 'through': '20261231',
        'sourceUrl': 'https://github.com/gerrymanoim/exchange_calendars',
        'note': 'XNYS is a US regular-equity-session proxy, not a KIS execution calendar. Special closures require updates.',
        'unverifiedDates': {'DOMESTIC': ['20261119'], 'US_NASDAQ': []},
-       'closureCorrections': {'DOMESTIC': ['20260603', '20260717']},
+       'closureCorrections': {'DOMESTIC': ['20250603', '20260603', '20260717']},
        'markets': {}}
 for market, calendar in calendars.items():
-    cal = xcals.get_calendar(calendar, start='2026-01-01', end='2026-12-31')
+    cal = xcals.get_calendar(calendar, start='2025-01-01', end='2026-12-31')
     sessions = {}
     for date, row in cal.schedule.iterrows():
         sessions[date.strftime('%Y%m%d')] = [row['open'].isoformat(), row['close'].isoformat()]

@@ -35,3 +35,10 @@ export const MARKET_CALENDAR_INFO = {
   unverifiedDates: MARKET_CALENDAR.unverifiedDates,
   closureCorrections: MARKET_CALENDAR.closureCorrections,
 };
+
+/** Closed markets may carry a near-close observation, never an arbitrary old quote. */
+export function lastScheduledClose(market: TradingMarket, at: Date): number|null {
+  if(!marketSession(market,at).known) return null;
+  const closes=Object.values(schedules[market]).map(s=>Date.parse(s[1])).filter(t=>t<=at.getTime());
+  return closes.length?Math.max(...closes):null;
+}

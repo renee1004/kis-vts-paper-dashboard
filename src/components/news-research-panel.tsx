@@ -57,7 +57,7 @@ export function NewsResearchPanel({ targets, running }: { targets: NewsTarget[];
                 <TableCell>{book.returnPct == null ? "—" : `${book.returnPct.toFixed(2)}%`}</TableCell><TableCell>{book.maxDrawdownPct.toFixed(2)}%</TableCell><TableCell>{book.fills} / {book.closedLots}</TableCell><TableCell>{book.holdings} / {book.pending}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        <p className="text-xs text-slate-500">관찰 시작 {clock(data.startedAt)} KST · {data.observations.toLocaleString()}회 종목 관찰(독립 거래 수 아님). 계좌 초기잔고와 같은 금액인 각 3,000만 원으로 새 가상 비교를 시작합니다. 기존 300만 원 비교 원장은 별도 보존합니다. 미국 1회 3,000달러·종목당 15%, 하루 합산 450만 원. 환율 1,500원 고정, 편도 비용 0.15% + 불리한 체결 0.10%. 신호 생성 후 최소 30초가 지난 다음 관측 가격으로 가상 체결합니다. 휴장일·조기폐장·체결 가능 물량은 반영하지 않은 추정이며 실제 계좌 성과가 아닙니다.</p>
+        <p className="text-xs text-slate-500">관찰 시작 {clock(data.startedAt)} KST · {data.observations.toLocaleString()}회 종목 관찰(독립 거래 수 아님). 계좌 초기잔고와 같은 금액인 각 3,000만 원으로 새 가상 비교를 시작합니다. 기존 300만 원 비교 원장은 별도 보존합니다. 미국 1회 3,000달러·종목당 15%, 하루 합산 450만 원. 환율 1,500원 고정, 편도 비용 0.15% + 불리한 체결 0.10%. 신호 생성 후 최소 30초가 지난 다음 관측 가격으로 가상 체결합니다. 달력에 수록된 휴장·조기폐장을 적용하지만 실제 체결 가능 물량은 재현하지 않는 추정이며 실제 계좌 성과가 아닙니다.</p>
         <div className="overflow-x-auto"><Table>
           <TableHeader><TableRow><TableHead>종목 / 뉴스 열기</TableHead><TableHead>가격 전략</TableHead><TableHead>뉴스 추가 전략</TableHead><TableHead>판단 근거</TableHead><TableHead>판단 시각 (KST)</TableHead></TableRow></TableHeader>
           <TableBody>{targets.map((t) => {

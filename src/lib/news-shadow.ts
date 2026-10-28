@@ -1,6 +1,7 @@
 import { exitDecision, sizeForRisk, type StrategySignal } from "@/lib/strategy";
 import { domesticMarketDate, usMarketDate, isDomesticRegularMarketOpen, isUsRegularMarketOpen } from "@/lib/market-hours";
 import { targetKey, type NewsAssessment, type NewsTarget } from "@/lib/news-model";
+import { lastScheduledClose, marketSession } from "@/lib/market-calendar";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW } from "@/lib/trading-limits";
 export const SHADOW_CAPITAL = PAPER_CAPITAL_KRW;
@@ -30,18 +31,29 @@ export function emptyBook(): ShadowBook {
     dailyBuy: { date: "", notionalKrw: 0 }, fills: 0, closedLots: 0, feesKrw: 0,
     peakNavKrw: SHADOW_CAPITAL, maxDrawdownPct: 0, lastEvent: "아직 가상 체결 없음" };
 }
-export function bookSummary(book: ShadowBook, now: number = Date.now()) {
+export function shadowMarkStale(key:string, mark:{at:string}|undefined, now:number, carryClosedMarketMarks=false):boolean {
+  const time=Date.parse(mark?.at??"");
+  if(!Number.isFinite(time)||time>now) return true;
+  const market=key.startsWith("US_NASDAQ:")?"US_NASDAQ":"DOMESTIC";
+  if(carryClosedMarketMarks&&!marketSession(market,new Date(now)).isOpen){
+    const close=lastScheduledClose(market,new Date(now));
+    return close==null||time<close-15*60_000;
+  }
+  return now-time>15*60_000;
+}
+export function bookSummary(book: ShadowBook, now: number = Date.now(), carryClosedMarketMarks=false) {
   const lots = Object.entries(book.positions);
   const missingMarks = lots.some(([key]) => !book.marks[key]);
   const navKrw = missingMarks ? null : book.cashKrw + lots.reduce((sum, [key, lot]) => sum + lot.quantity * book.marks[key].priceKrw, 0);
   return { navKrw, returnPct: navKrw == null ? null : (navKrw / SHADOW_CAPITAL - 1) * 100,
     cashKrw: book.cashKrw, holdings: lots.length, fills: book.fills, closedLots: book.closedLots,
     feesKrw: book.feesKrw, maxDrawdownPct: book.maxDrawdownPct, pending: Object.keys(book.pending).length,
-    staleMarks: lots.filter(([key]) => !book.marks[key] || now - Date.parse(book.marks[key].at) > 15 * 60_000).length,
+    staleMarks: lots.filter(([key]) => shadowMarkStale(key,book.marks[key],now,carryClosedMarketMarks)).length,
     lastEvent: book.lastEvent };
 }
 /** Local hypothetical fills only. This module has no broker client or order transport. */
-export function advanceShadow(book: ShadowBook, observation: ResearchObservation, mode: "price" | "news"): string[] {
+export function advanceShadow(book: ShadowBook, observation: ResearchObservation, mode: "price" | "news",
+  options: { entryAllowed?: boolean; carryClosedMarketMarks?: boolean } = {}): string[] {
   const { target, signal, news, at, previousClose } = observation;
   const now = Date.parse(at), key = targetKey(target);
   const events: string[] = [];
@@ -65,8 +77,8 @@ export function advanceShadow(book: ShadowBook, observation: ResearchObservation
     const lot = book.positions[key];
     if (pending.side === "BUY") {
       const exposure = Object.entries(book.positions).reduce((sum, [k, p]) => sum + p.quantity * (book.marks[k]?.priceKrw ?? p.averagePriceKrw), 0);
-      const stale = bookSummary(book, now).staleMarks > 0;
-      const currentAllowsBuy = validCandles && (mode === "price" ? signal.side === "BUY" : news.side === "BUY" && news.fresh);
+      const stale = bookSummary(book, now, options.carryClosedMarketMarks).staleMarks > 0;
+      const currentAllowsBuy = options.entryAllowed !== false && validCandles && (mode === "price" ? signal.side === "BUY" : news.side === "BUY" && news.fresh);
       const quantity = Math.min(pending.quantity, sizeForRisk({ budget: SHADOW_CAPITAL, price: executionPrice,
         stopFraction: pending.stopFraction, committed: exposure, dailyRemaining: DAILY_BUY_CAP_KRW - book.dailyBuy.notionalKrw }, target.market),
         Math.floor(book.cashKrw / (executionPrice * (1 + SHADOW_FEE))));
@@ -90,7 +102,7 @@ export function advanceShadow(book: ShadowBook, observation: ResearchObservation
       }
     }
   }
-  const valuation = bookSummary(book, now);
+  const valuation = bookSummary(book, now, options.carryClosedMarketMarks);
   if (valuation.navKrw != null && !valuation.staleMarks) {
     book.peakNavKrw = Math.max(book.peakNavKrw, valuation.navKrw);
     book.maxDrawdownPct = Math.max(book.maxDrawdownPct, (1 - valuation.navKrw / book.peakNavKrw) * 100);
@@ -105,7 +117,7 @@ export function advanceShadow(book: ShadowBook, observation: ResearchObservation
   const signalKey = `${session}:${signal.signalDate}:${side}`;
   if (!risk && !validCandles) return events;
   if (side === "BUY" && !lot && book.usedBuySignals[key] !== signalKey && book.lastSoldSession[key] !== session &&
-      validCandles && previousClose > 0 && Math.abs(observation.price / previousClose - 1) <= 0.02) {
+      options.entryAllowed !== false && validCandles && previousClose > 0 && Math.abs(observation.price / previousClose - 1) <= 0.02) {
     const exposure = Object.entries(book.positions).reduce((sum, [k, p]) => sum + p.quantity * (book.marks[k]?.priceKrw ?? p.averagePriceKrw), 0);
     const quantity = sizeForRisk({ budget: SHADOW_CAPITAL, price: priceKrw * (1 + SHADOW_SLIPPAGE), stopFraction: signal.stopFraction,
       committed: exposure, dailyRemaining: DAILY_BUY_CAP_KRW - book.dailyBuy.notionalKrw }, target.market);

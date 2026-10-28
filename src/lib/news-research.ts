@@ -12,7 +12,7 @@ const finite = z.number().finite();
 const positive = finite.positive(), nonnegative = finite.nonnegative();
 const timestamp = z.string().datetime();
 const record = <T extends z.ZodType>(schema: T) => z.record(z.string(), schema);
-const bookSchema = z.object({
+export const bookSchema = z.object({
   cashKrw: nonnegative, positions: record(z.object({ quantity: positive.int(), averagePriceKrw: positive,
     stopFraction: positive.max(0.08), partialTaken: z.boolean() })),
   pending: record(z.object({ side: z.enum(["BUY", "SELL"]), decidedAt: timestamp, signalKey: z.string(), reason: z.string(),
