@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dashboard": "bash ../scripts/start-vts-dashboard.sh",
+    "dashboard": "bash scripts/start-vts-dashboard.sh",
     "kis:setup": "node scripts/setup-kis-env.mjs",
     "dev": "next dev",
     "build": "next build",
