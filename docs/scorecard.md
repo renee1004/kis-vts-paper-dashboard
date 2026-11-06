@@ -17,7 +17,7 @@
    | 거시 | FDR VIX·원달러 20일 변화·미 10년물 20일 변화 | VIX<20, 환율<+1%, 금리<+15bp | VIX≥30 또는 환율≥+3% 또는 금리≥+40bp |
    뉴스 관점은 구조적으로 가격 입력이 없습니다. `newsOnly()`가 헤드라인·신선도 외 필드를 버립니다 (지난 리뷰: 뉴스 판단 17건 중 15건이 가격 신호 복사).
 2. 매수할 이유 / 안 할 이유 한 줄씩 (`bullCase`, `bearCase`).
-3. 포트폴리오 점검: 보유 종목 수(최대 5), 종목 비중(국내 10%·미국 15%, `marketRiskLimits`), 레버리지·인버스는 기존대로 매수 금지(3~5% 한도보다 엄격하게 유지).
+3. 포트폴리오 점검: 보유 종목 수(최대 5), 종목 비중(국내 10%·미국 15%, `marketRiskLimits`). 레버리지·인버스는 (renee 승인으로) 전면 금지 대신 **합계 노출 ≤ 평가자산(원금+전략 손익)의 5%** 안에서만 허용합니다. `LEVERED_EXPOSURE_CAP_PCT`로 3~5% 범위 안에서만 조정되고(범위 밖 값은 3 또는 5로 고정), 한 주문이 한도를 넘기면 수량을 줄이고 1주도 못 사면 `LEVERED_EXPOSURE_CAP`으로 차단합니다. 판별: 이름(인버스·곱버스·레버리지·2X·3X·Ultra·Inverse·Leveraged·Bear) 또는 대표 미국 티커(TQQQ, SQQQ, SOXL 등). 나머지 게이트는 모두 그대로입니다.
 4. 규칙 필터 (점수보다 우선):
    - 미확인 관점 2개 이상 → 보류
    - FOMC 당일(미국: 회의 이틀, 국내: 발표 다음 날 KST) → 보류. 달력 범위 밖은 미확인 → 보류
@@ -49,3 +49,21 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 
 ## 화면
 `ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지).
+
+## 데이터 출처 우선순위 (v3.1)
+| 값 | 1순위 | 2순위 | 3순위 | 비고 |
+|---|---|---|---|---|
+| 국내 PER·PBR·시총 | KIS `inquire-price`(FHKST01010100) 응답의 `per`·`pbr`·`hts_avls` — 앱이 이미 하는 현재가 호출에서 같이 저장(추가 호출 없음) | 네이버 모바일 JSON `m.stock.naver.com/api/stock/{code}/integration` | pykrx (KRX 로그인 필요, 현재 실패) | 이유 문구에 `[KIS]`/`[NAVER]`/`[PYKRX]` 표시 |
+| 국내 외국인·기관 순매수 | KIS `inquire-investor`(FHKST01010900), 6시간 캐시, 실패 시 6시간 재시도 안 함 | 네이버 `.../{code}/trend?pageSize=5` (순매수 **수량×종가** 근사, 원) | pykrx | KIS는 백만원 단위 거래대금 |
+| 미국 PER·PBR·시총 | yfinance `info`(trailingPE, priceToBook, marketCap×원달러) | — | — | |
+| 미국 수급 | 수집 안 함 → 미확인 | | | 기관 보유 변화는 분기 13F 기준이라 시차가 커서 정직한 단기 수급 대용이 아님 |
+| ETF 펀더멘털 | 미확인(ETF는 PER·PBR 의미 없음) | | | 수급은 네이버로 채움 |
+| 일봉·거시 | FinanceDataReader | KIS 일봉(200개 미만이면 기술적 미확인) | | |
+| 실적 발표일 | 수동 항목(`source`가 `auto:`로 시작하지 않음, 덮어쓰지 않음) | yfinance calendar (미국, 국내 `.KS`/`.KQ`) | ETF는 실적 없음(30일 유효) | 다음 발표일까지를 확인 범위로 봄. 못 찾으면 미확인 → 신규 매수 보류 |
+
+한계:
+- KIS 값은 **서버 재시작 후** 실행 사이클에서만 채워집니다. VTS에서 `inquire-investor`가 지원되는지는 아직 실제 호출로 확인하지 않았습니다(키 보호를 위해 별도 테스트 호출을 하지 않음). 실패하면 자동으로 네이버 캐시를 씁니다.
+- 네이버는 비공식 JSON이라 형식이 바뀌면 조용히 미확인이 됩니다. 1초 1회, 6시간 캐시(`.data/naver-cache/`). 수급은 당일 장중이 아닌 전일까지 값이며, 거래대금이 아니라 수량×종가 근사입니다.
+- yfinance 국내 실적일은 추정일일 수 있습니다(예: 잠정실적 공시일과 다를 수 있음). 중요한 종목은 수동 항목으로 덮어쓰세요:
+  `"DOMESTIC:005930": {"dates": ["20270108"], "verifiedThrough": "20270331", "source": "manual"}`
+- 판단 예시 재현: `NEWS_DATA_DIR=<뉴스 원장 폴더> node scripts/scorecard-examples.cjs DOMESTIC:005930 US_NASDAQ:MSFT` (주문·KIS 호출 없음, 가격은 마지막 완료 종가)

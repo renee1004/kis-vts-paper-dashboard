@@ -18,8 +18,8 @@ export const CONCLUSIONS = ["매수검토", "조건부매수", "보유", "추가
 export type Conclusion = (typeof CONCLUSIONS)[number];
 
 export interface ViewResult { score: ViewScore; reason: string }
-export interface FundamentalsInput { per: number | null; pbr: number | null; marketCapKrw: number | null }
-export interface FlowsInput { foreignNetKrw: number | null; institutionNetKrw: number | null; days: number }
+export interface FundamentalsInput { per: number | null; pbr: number | null; marketCapKrw: number | null; source?: string }
+export interface FlowsInput { foreignNetKrw: number | null; institutionNetKrw: number | null; days: number; source?: string }
 export interface MacroInput { vix: number | null; usdKrwChange20dPct: number | null; us10yChange20dBp: number | null }
 /** Headline-only input. Deliberately has no price/chart fields. */
 export interface NewsOnlyInput { fresh: boolean; directHeadlines: string[] }
@@ -27,20 +27,24 @@ export interface NewsOnlyInput { fresh: boolean; directHeadlines: string[] }
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
+const tag = (source?: string) => source ? ` [${source}]` : "";
 export function scoreFundamentals(f: FundamentalsInput | null): ViewResult {
   if (!f || !finite(f.per) || !finite(f.pbr) || !finite(f.marketCapKrw) || f.marketCapKrw <= 0)
-    return { score: "UNKNOWN", reason: "PER·PBR·시가총액 데이터 없음" };
-  if (f.marketCapKrw < 100_000_000_000) return { score: -1, reason: "시가총액 1,000억 원 미만(유동성 위험)" };
-  if (f.per <= 0 || f.per > 40 || f.pbr > 5) return { score: -1, reason: `적자 또는 고평가 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})` };
-  if (f.per <= 15 && f.pbr > 0 && f.pbr <= 1.5) return { score: 1, reason: `저평가 구간 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})` };
-  return { score: 0, reason: `중립 밸류에이션 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})` };
+    return { score: "UNKNOWN", reason: "PER·PBR·시가총액 데이터 없음" + tag(f?.source) };
+  const t = tag(f.source);
+  if (f.marketCapKrw < 100_000_000_000) return { score: -1, reason: `시가총액 1,000억 원 미만(유동성 위험)${t}` };
+  if (f.per <= 0 || f.per > 40 || f.pbr > 5) return { score: -1, reason: `적자 또는 고평가 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})${t}` };
+  if (f.per <= 15 && f.pbr > 0 && f.pbr <= 1.5) return { score: 1, reason: `저평가 구간 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})${t}` };
+  return { score: 0, reason: `중립 밸류에이션 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})${t}` };
 }
 
 export function scoreFlows(f: FlowsInput | null): ViewResult {
-  if (!f || !finite(f.foreignNetKrw) || !finite(f.institutionNetKrw)) return { score: "UNKNOWN", reason: "외국인·기관 순매수 데이터 없음" };
-  if (f.foreignNetKrw > 0 && f.institutionNetKrw > 0) return { score: 1, reason: `최근 ${f.days}일 외국인·기관 동반 순매수` };
-  if (f.foreignNetKrw < 0 && f.institutionNetKrw < 0) return { score: -1, reason: `최근 ${f.days}일 외국인·기관 동반 순매도` };
-  return { score: 0, reason: `최근 ${f.days}일 외국인·기관 방향 엇갈림` };
+  if (!f || !finite(f.foreignNetKrw) || !finite(f.institutionNetKrw)) return { score: "UNKNOWN", reason: "외국인·기관 순매수 데이터 없음" + tag(f?.source) };
+  const t = tag(f.source), eok = (v: number) => `${(v / 1e8).toFixed(0)}억`;
+  const d = `외국인 ${eok(f.foreignNetKrw)}·기관 ${eok(f.institutionNetKrw)}`;
+  if (f.foreignNetKrw > 0 && f.institutionNetKrw > 0) return { score: 1, reason: `최근 ${f.days}일 동반 순매수 (${d})${t}` };
+  if (f.foreignNetKrw < 0 && f.institutionNetKrw < 0) return { score: -1, reason: `최근 ${f.days}일 동반 순매도 (${d})${t}` };
+  return { score: 0, reason: `최근 ${f.days}일 방향 엇갈림 (${d})${t}` };
 }
 
 export interface TechnicalLevels { lastClose: number; prevClose: number; ma20: number; ma60: number; ma200: number; high52w: number; low52w: number; lastDate: string }
@@ -118,7 +122,7 @@ export function decideScorecard(input: ScorecardInput): Scorecard {
   const filters: string[] = [];
   const stopBase = held ? input.holding!.averagePrice : price ?? 0;
   const stopLoss = stopBase > 0 ? stopBase * (1 - input.stopFraction) : null;
-  const portfolioNote = `보유 ${input.portfolio.heldNames}/${input.portfolio.maxNames}종목 · 종목비중 ${input.portfolio.nameWeight == null ? "미확인" : (input.portfolio.nameWeight * 100).toFixed(1) + "%"} (한도 ${(input.portfolio.maxNameFraction * 100).toFixed(0)}%) · 레버리지·인버스 상품은 매수 금지(3~5% 한도보다 엄격)`;
+  const portfolioNote = `보유 ${input.portfolio.heldNames}/${input.portfolio.maxNames}종목 · 종목비중 ${input.portfolio.nameWeight == null ? "미확인" : (input.portfolio.nameWeight * 100).toFixed(1) + "%"} (한도 ${(input.portfolio.maxNameFraction * 100).toFixed(0)}%) · 레버리지·인버스 합계 노출은 평가자산의 3~5% 한도(기본 5%) 안에서만`;
   const base = { version: DECISION_ENGINE_VERSION, views, knownTotal, unknownCount, filters, bullCase, bearCase, portfolioNote };
   const out = (conclusion: Conclusion, invalidation: string, entry: number | null = price): Scorecard =>
     ({ ...base, conclusion, entryPrice: entry, stopLoss, invalidation });

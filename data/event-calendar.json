@@ -34,5 +34,67 @@
       ]
     }
   },
-  "earnings": {}
+  "earnings": {
+    "DOMESTIC:005930": {
+      "dates": [
+        "20270127"
+      ],
+      "verifiedThrough": "20270127",
+      "source": "auto:yfinance(005930.KS, 추정일 포함)"
+    },
+    "DOMESTIC:000660": {
+      "dates": [
+        "20270127"
+      ],
+      "verifiedThrough": "20270127",
+      "source": "auto:yfinance(000660.KS, 추정일 포함)"
+    },
+    "DOMESTIC:035420": {
+      "dates": [
+        "20261112"
+      ],
+      "verifiedThrough": "20261112",
+      "source": "auto:yfinance(035420.KS, 추정일 포함)"
+    },
+    "DOMESTIC:005380": {
+      "dates": [
+        "20270128"
+      ],
+      "verifiedThrough": "20270128",
+      "source": "auto:yfinance(005380.KS, 추정일 포함)"
+    },
+    "DOMESTIC:069500": {
+      "dates": [],
+      "verifiedThrough": "20261206",
+      "source": "auto:ETF(실적발표 없음)"
+    },
+    "US_NASDAQ:AAPL": {
+      "dates": [
+        "20270129"
+      ],
+      "verifiedThrough": "20270129",
+      "source": "auto:yfinance(AAPL)"
+    },
+    "US_NASDAQ:NVDA": {
+      "dates": [
+        "20261118"
+      ],
+      "verifiedThrough": "20261118",
+      "source": "auto:yfinance(NVDA)"
+    },
+    "US_NASDAQ:AMD": {
+      "dates": [
+        "20270203"
+      ],
+      "verifiedThrough": "20270203",
+      "source": "auto:yfinance(AMD)"
+    },
+    "US_NASDAQ:MSFT": {
+      "dates": [
+        "20270128"
+      ],
+      "verifiedThrough": "20270128",
+      "source": "auto:yfinance(MSFT)"
+    }
+  }
 }

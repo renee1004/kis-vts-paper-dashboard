@@ -5,6 +5,7 @@ import { conclusionToOrderSide, decideScorecard, DECISION_ENGINE_VERSION, eventS
   scoreMacro, scoreNews, scoreTechnical, technicalLevels } from "@/lib/scorecard";
 import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeScorecardUniverse } from "@/lib/scorecard-data";
 import { ownedLot } from "@/lib/ownership";
+import { kisFlows, kisFlowsDue, kisFundamentals, noteKisFlowsFailure, setKisFlows } from "@/lib/kis-quote-cache";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
 import { USD_KRW_SAFETY_RATE } from "@/lib/domain";
 import { EMPTY_CYCLE_SUMMARY, WatchlistItem } from "@/lib/domain";
@@ -90,6 +91,10 @@ async function analyzeWatchlistItem(
   state.lastCycleSummary.signalsGenerated += 1;
 
   // Live paper-order decision: 5-perspective scorecard (legacy trend signal is display/research only).
+  if (!isUs && kisFlowsDue(item.stockCode)) {
+    try { setKisFlows(item.stockCode, { ...(await client.getInvestorFlows(item.stockCode)), at: new Date().toISOString() }); }
+    catch { noteKisFlowsFailure(item.stockCode); } // falls back to Naver/pykrx cache
+  }
   const card = buildScorecard(item, price, bars);
   item.analysis = conclusionToOrderSide(card.conclusion);
   item.blockedReason = `${card.conclusion} · ${card.filters.join(",") || "필터 통과"}`;
@@ -129,9 +134,11 @@ function buildScorecard(item: WatchlistItem, price: number | null, kisBars: Dail
   const lot = ownedLot(state.vtsOrders, item.market, item.stockCode);
   const limits = marketRiskLimits(item.market);
   const fx = item.market === "US_NASDAQ" ? USD_KRW_SAFETY_RATE : 1;
+  const kisFund = item.market === "DOMESTIC" && !data.symbol?.isEtf ? kisFundamentals(item.stockCode) : null;
+  const kisFlow = item.market === "DOMESTIC" ? kisFlows(item.stockCode) : null;
   const views = {
-    fundamentals: scoreFundamentals(data.symbol?.fundamentals ?? null),
-    flows: scoreFlows(data.symbol?.flows ?? null),
+    fundamentals: scoreFundamentals(kisFund ? { ...kisFund, source: "KIS" } : data.symbol?.fundamentals ?? null),
+    flows: scoreFlows(kisFlow ? { ...kisFlow, source: "KIS" } : data.symbol?.flows ?? null),
     technical: scoreTechnical(technical),
     // Structurally isolated: headlines + feed freshness only, no price/chart input.
     news: scoreNews(researchHeadlinesFor(target, universe)),

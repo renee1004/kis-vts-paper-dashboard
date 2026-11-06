@@ -1,4 +1,5 @@
 import "server-only";
+import { setKisQuoteFundamentals } from "@/lib/kis-quote-cache";
 
 import {
   BalanceSnapshot,
@@ -667,7 +668,27 @@ export class KisVtsClient {
     const output = (body.output ?? {}) as Record<string, unknown>;
     const price = safeNumber(output.stck_prpr);
     if (price <= 0) throw new Error("KIS_PRICE_EMPTY");
+    // Same response carries valuation fields; keep only these non-secret numbers for the scorecard.
+    const per = Number(output.per), pbr = Number(output.pbr), capEok = Number(output.hts_avls);
+    if (Number.isFinite(per) && Number.isFinite(pbr) && Number.isFinite(capEok) && capEok > 0 && (per !== 0 || pbr !== 0)) {
+      setKisQuoteFundamentals(stockCode, { per: per || null, pbr: pbr || null, marketCapKrw: capEok * 1e8, at: new Date().toISOString() });
+    }
     return price;
+  }
+
+  /** Foreign/institution net buying value (KIS 백만원 → KRW), last completed days, read-only quote TR. */
+  async getInvestorFlows(stockCode: string, days = 5): Promise<{ foreignNetKrw: number; institutionNetKrw: number; days: number; asOf: string }> {
+    const body = await this.get("domesticPrice", "/uapi/domestic-stock/v1/quotations/inquire-investor", "FHKST01010900",
+      new URLSearchParams({ FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: stockCode }), stockCode);
+    const today = domesticMarketDate();
+    const rows = (Array.isArray(body.output) ? body.output : []).map((raw) => raw as Record<string, unknown>)
+      .filter((r) => /^\d{8}$/.test(safeText(r.stck_bsop_date)) && safeText(r.stck_bsop_date) < today)
+      .filter((r) => safeText(r.frgn_ntby_tr_pbmn) !== "" && safeText(r.orgn_ntby_tr_pbmn) !== "").slice(0, days);
+    if (rows.length < days) throw new Error("KIS_INVESTOR_EMPTY");
+    const sum = (field: string) => rows.reduce((total, r) => total + Number(safeText(r[field])) * 1e6, 0);
+    const foreignNetKrw = sum("frgn_ntby_tr_pbmn"), institutionNetKrw = sum("orgn_ntby_tr_pbmn");
+    if (!Number.isFinite(foreignNetKrw) || !Number.isFinite(institutionNetKrw)) throw new Error("KIS_INVESTOR_INVALID");
+    return { foreignNetKrw, institutionNetKrw, days: rows.length, asOf: safeText(rows[0].stck_bsop_date) };
   }
 
   async getDailyCandles(stockCode: string): Promise<number[]> {

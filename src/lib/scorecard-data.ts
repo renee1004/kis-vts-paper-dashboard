@@ -12,12 +12,13 @@ const cacheSchema = z.object({
   version: z.literal(1), generatedAt: z.string().datetime({ offset: true }),
   symbols: z.record(z.string(), z.object({
     bars: z.array(z.object({ date: z.string().regex(/^\d{8}$/), close: z.number().positive(), low: z.number().positive().optional() })).max(400).default([]),
-    fundamentals: z.object({ per: num, pbr: num, marketCapKrw: num, asOf: z.string() }).nullable().default(null),
-    flows: z.object({ foreignNetKrw: num, institutionNetKrw: num, days: z.number().int().positive(), asOf: z.string() }).nullable().default(null),
+    fundamentals: z.object({ per: num, pbr: num, marketCapKrw: num, asOf: z.string(), source: z.string().optional() }).nullable().default(null),
+    flows: z.object({ foreignNetKrw: num, institutionNetKrw: num, days: z.number().int().positive(), asOf: z.string(), source: z.string().optional() }).nullable().default(null),
+    isEtf: z.boolean().optional(),
   })),
   macro: z.object({ vix: num, usdKrwChange20dPct: num, us10yChange20dBp: num, asOf: z.string() }).nullable().default(null),
 });
-export interface SymbolData { bars: DailyBar[]; fundamentals: FundamentalsInput | null; flows: FlowsInput | null }
+export interface SymbolData { bars: DailyBar[]; fundamentals: FundamentalsInput | null; flows: FlowsInput | null; isEtf: boolean }
 const MAX_AGE_MS = 4 * 86400_000;
 let cached: { mtime: number; data: z.infer<typeof cacheSchema> | null } | null = null;
 function load() {
@@ -37,7 +38,7 @@ export function scorecardData(market: TradingMarket, stockCode: string, now = Da
   if (!Number.isFinite(age) || age < -60_000 || age > MAX_AGE_MS) return { symbol: null, macro: null, generatedAt: data.generatedAt };
   const row = data.symbols[`${market}:${stockCode}`];
   return { generatedAt: data.generatedAt, macro: data.macro,
-    symbol: row ? { bars: row.bars, fundamentals: row.fundamentals, flows: row.flows } : null };
+    symbol: row ? { bars: row.bars, fundamentals: row.fundamentals, flows: row.flows, isEtf: !!row.isEtf } : null };
 }
 /** Universe file for scripts/scorecard-collect.py (codes and names only, no account data). */
 export function writeScorecardUniverse(targets: { market: TradingMarket; stockCode: string; stockName: string }[]): void {
@@ -48,7 +49,7 @@ export function writeScorecardUniverse(targets: { market: TradingMarket; stockCo
 }
 const calendarSchema = z.object({
   fomc: z.object({ verifiedFrom: z.string(), verifiedThrough: z.string(), blackout: z.object({ DOMESTIC: z.array(z.string()), US_NASDAQ: z.array(z.string()) }) }),
-  earnings: z.record(z.string(), z.object({ verifiedThrough: z.string(), dates: z.array(z.string()) })),
+  earnings: z.record(z.string(), z.object({ verifiedThrough: z.string(), dates: z.array(z.string()), source: z.string().optional() })),
 });
 export function eventCalendar(): EventCalendar | null {
   try { return calendarSchema.parse(JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "event-calendar.json"), "utf8"))); }

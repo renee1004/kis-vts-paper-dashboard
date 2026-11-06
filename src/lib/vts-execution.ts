@@ -13,7 +13,7 @@ import { isPending, ownedLot, sameKisOrderNo, sellableQuantity } from "@/lib/own
 import { exitDecision, sizeForRisk, type DailyBar } from "@/lib/strategy";
 import { DECISION_ENGINE_VERSION } from "@/lib/scorecard";
 
-import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits } from "@/lib/trading-limits";
+import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits, isLeveredProduct, leveredCapQuantity } from "@/lib/trading-limits";
 import { researchBuyNewsBlock } from "@/lib/news-research";
 import { closeBreakdown, findStopOverride, kstMinutes, recentLow, REBASED_TREND_RULE, type StopOverride } from "@/lib/stop-rebase";
 const PRINCIPAL_KRW = PAPER_CAPITAL_KRW;
@@ -126,7 +126,6 @@ export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVt
       o.signalDate === input.signalDate && o.status !== "BLOCKED")) return blocked(input, "SIGNAL_ALREADY_USED");
   if (state.vtsOrders.some((o) => o.market === input.market && o.stockCode === input.stockCode && o.side === "SELL" &&
       o.filledQuantity > 0 && o.orderDate === marketDate(input.market))) return blocked(input, "SAME_DAY_REENTRY_BLOCKED");
-  if (/인버스|곱버스|레버리지|3X|2X/i.test(input.stockName)) return blocked(input, "LEVERED_PRODUCT_BLOCKED");
   let usBuyingPower: { amountUsd: number; quantity: number; checkedAt: number } | null = null;
   if (input.market === "US_NASDAQ") {
     try { usBuyingPower = await client.getOverseasBuyingPower(input.stockCode, input.price); }
@@ -154,6 +153,21 @@ export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVt
     quantity = Math.min(quantity, usBuyingPower.quantity,
       Math.floor(Math.max(0, usBuyingPower.amountUsd - pendingUsd) / (input.price * 1.01)));
     if (quantity < 1) return blocked(input, "US_ORDERABLE_FUNDS_OR_BUDGET_CAP");
+  }
+  if (isLeveredProduct(input.stockCode, input.stockName)) {
+    // User-approved: levered/inverse allowed only while total levered exposure stays within the 3–5% cap.
+    const leveredKeys = new Set(state.vtsOrders.filter((o) => isLeveredProduct(o.stockCode, o.stockName)).map((o) => key(o.market, o.stockCode)));
+    let currentLeveredKrw = 0;
+    for (const k of leveredKeys) {
+      const [m, code] = k.split(":") as [TradingMarket, string];
+      const lot = ownedLot(state.vtsOrders, m, code);
+      const mark = positionFor({ market: m, stockCode: code })?.currentPrice || lot.averagePrice;
+      currentLeveredKrw += lot.quantity * mark * rate(m);
+    }
+    currentLeveredKrw += state.vtsOrders.filter((o) => o.side === "BUY" && isPending(o) && isLeveredProduct(o.stockCode, o.stockName))
+      .reduce((sum, o) => sum + (o.quantity - o.filledQuantity) * o.referencePrice * rate(o.market), 0);
+    quantity = leveredCapQuantity({ equityKrw: PRINCIPAL_KRW + valuation.pnl, currentLeveredKrw, priceKrw: input.price * rate(input.market) * 1.01, requested: quantity });
+    if (quantity < 1) return blocked(input, "LEVERED_EXPOSURE_CAP");
   }
   if (input.side === "BUY") {
     const newsGate = researchBuyNewsBlock(input.market, input.stockCode);

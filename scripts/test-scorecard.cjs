@@ -136,5 +136,39 @@ check('cutover marker written once and never overwritten', () => {
   assert.equal(data.decisionEngineCutover().cutoverAt, '2026-11-06T07:00:00.000Z');
   assert.equal(data.scorecardData('DOMESTIC', '005930').symbol, null); // no cache => unknown views
 });
+check('levered/inverse cap: under cap allowed, over cap blocked, band 3-5%', () => {
+  const tl = load('src/lib/trading-limits.ts');
+  assert.equal(tl.isLeveredProduct('122630', 'KODEX 레버리지'), true);
+  assert.equal(tl.isLeveredProduct('252670', 'KODEX 200선물인버스2X'), true);
+  assert.equal(tl.isLeveredProduct('TQQQ', 'ProShares Trust'), true);
+  assert.equal(tl.isLeveredProduct('069500', 'KODEX 200'), false);
+  assert.equal(tl.leveredExposureCapFraction(undefined), 0.05);
+  assert.equal(tl.leveredExposureCapFraction('3'), 0.03);
+  assert.equal(tl.leveredExposureCapFraction('10'), 0.05); // cannot exceed approved band
+  assert.equal(tl.leveredExposureCapFraction('1'), 0.03);
+  // equity 30M, cap 5% => 1.5M room
+  assert.equal(tl.leveredCapQuantity({ equityKrw: 30e6, currentLeveredKrw: 0, priceKrw: 10_000, requested: 100 }), 100); // 1.0M under cap
+  assert.equal(tl.leveredCapQuantity({ equityKrw: 30e6, currentLeveredKrw: 0, priceKrw: 10_000, requested: 300 }), 150); // capped to fit
+  assert.equal(tl.leveredCapQuantity({ equityKrw: 30e6, currentLeveredKrw: 1.5e6, priceKrw: 10_000, requested: 10 }), 0); // at cap => blocked
+  assert.equal(tl.leveredCapQuantity({ equityKrw: 30e6, currentLeveredKrw: 1.6e6, priceKrw: 10_000, requested: 10 }), 0); // over cap
+  assert.equal(tl.leveredCapQuantity({ equityKrw: -1, currentLeveredKrw: 0, priceKrw: 10_000, requested: 10 }), 0);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src/lib/vts-execution.ts'), 'utf8');
+  assert.ok(src.includes('LEVERED_EXPOSURE_CAP') && !src.includes('LEVERED_PRODUCT_BLOCKED'));
+});
+check('source tags appear in fundamentals/flows reasons', () => {
+  assert.ok(sc.scoreFundamentals({ per: 10, pbr: 1, marketCapKrw: 1e12, source: 'NAVER' }).reason.includes('[NAVER]'));
+  assert.ok(sc.scoreFlows({ foreignNetKrw: 1e9, institutionNetKrw: -1e9, days: 5, source: 'KIS' }).reason.includes('[KIS]'));
+});
+check('KIS quote cache: fresh values used, flows retry throttled after failure', () => {
+  const kc = load('src/lib/kis-quote-cache.ts');
+  const now = Date.parse('2026-11-06T07:00:00Z');
+  kc.setKisQuoteFundamentals('005930', { per: 8, pbr: 2, marketCapKrw: 1e15, at: new Date(now).toISOString() });
+  assert.equal(kc.kisFundamentals('005930', now).per, 8);
+  assert.equal(kc.kisFundamentals('005930', now + 40 * 3600_000), null);
+  assert.equal(kc.kisFlowsDue('000660', now), true);
+  kc.noteKisFlowsFailure('000660', now);
+  assert.equal(kc.kisFlowsDue('000660', now + 3600_000), false);
+  assert.equal(kc.kisFlowsDue('000660', now + 7 * 3600_000), true);
+});
 console.log(`${checks} scorecard checks passed`);
 fs.rmSync(testDir, { recursive: true, force: true });
