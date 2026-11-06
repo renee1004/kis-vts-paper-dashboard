@@ -10,6 +10,7 @@ import { analyzeTrend } from "./strategy";
 import { KisVtsClient } from "./kis-vts-client";
 import { marketSession } from "./market-calendar";
 import { BENCHMARK_SYMBOLS, COMPARISON_VERSION, monthlyMarketFilter, parseBenchmarkResponse, type BenchmarkSnapshot } from "./market-filter";
+import { decisionEngineCutover } from "./scorecard-data";
 import { advanceComparison, advancePassive, emptyComparison, type ComparisonState } from "./market-comparison-model";
 
 const root=process.env.DATA_DIR||path.join(process.cwd(),".data");
@@ -149,7 +150,7 @@ export function marketComparisonView(){
     stale:lot.quantity>0&&shadowMarkStale(`${which}:benchmark`,lot.markAt?{at:lot.markAt}:undefined,now,true)}));
   const passiveReady=!!current.eligibleSince&&passiveRows.every(p=>!!p.entryAt&&!p.stale&&p.navKrw!=null);
   const passiveNav=passiveReady?passiveRows.reduce((sum,p)=>sum+p.navKrw!,0):null;
-  return {version:current.version,isCollecting:!!runtime.__marketComparisonEnabled,cycleRunning:!!runtime.__marketComparisonJob,
+  return {liveDecisionEngine:decisionEngineCutover(),version:current.version,isCollecting:!!runtime.__marketComparisonEnabled,cycleRunning:!!runtime.__marketComparisonJob,
     waitingForMarket:current.universe.length>0&&!current.universe.some(t=>marketSession(t.market).isOpen),
     startedAt:current.startedAt,updatedAt:current.updatedAt,eligibleSince:current.eligibleSince,universe:current.universe,
     lastError:runtime.__marketComparisonError??current.lastError,lastDecision:current.lastDecision,filters:current.filters,counts:current.counts,

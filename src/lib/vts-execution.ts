@@ -10,7 +10,8 @@ import { getOrderDecision } from "@/lib/safety";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
 import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
 import { isPending, ownedLot, sameKisOrderNo, sellableQuantity } from "@/lib/ownership";
-import { exitDecision, sizeForRisk, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
+import { exitDecision, sizeForRisk, type DailyBar } from "@/lib/strategy";
+import { DECISION_ENGINE_VERSION } from "@/lib/scorecard";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits } from "@/lib/trading-limits";
 import { researchBuyNewsBlock } from "@/lib/news-research";
@@ -49,7 +50,7 @@ function makeOrder(input: ExecuteVtsOrderInput, quantity: number): VtsOrder {
     filledQuantity: 0, referencePrice: input.price, orderType: input.market === "DOMESTIC" ? "MARKET" : "LIMIT",
     status: "UNKNOWN", blockedReason: null, kisOrderNo: null, kisBranchNo: null,
     signalId: input.signalId, sessionId: state.sessionId, ownershipScope: "AGENT_CREATED_ONLY",
-    strategyVersion: STRATEGY_VERSION, signalDate: input.signalDate, stopFraction: input.stopFraction };
+    strategyVersion: DECISION_ENGINE_VERSION, signalDate: input.signalDate, stopFraction: input.stopFraction };
 }
 function blocked(input: ExecuteVtsOrderInput, reason: string): VtsOrder {
   state.lastCycleSummary.vtsOrderFailed += 1;
@@ -252,7 +253,7 @@ export const VTS_ORDER_LIMITS = { maxPositions: MAX_POSITIONS, maxNameFraction: 
   usPerOrderCapUsd: US_ORDER_CAP_USD, usMaxNameFraction: marketRiskLimits("US_NASDAQ").nameFraction,
   usRiskPerTradeFraction: marketRiskLimits("US_NASDAQ").riskFraction,
   usdKrwSafetyRate: USD_KRW_SAFETY_RATE, sellScope: "AGENT_CREATED_ONLY" as const, usOrderType: "LIMIT" as const,
-  strategyVersion: STRATEGY_VERSION, validationStatus: "UNVALIDATED_PAPER_ONLY",
+  strategyVersion: DECISION_ENGINE_VERSION, validationStatus: "UNVALIDATED_PAPER_ONLY",
   usMarketHours: "America/New_York 09:30-16:00 ET weekdays (not KST)" };
 
 const fmt = (value?: number | null) => value && value > 0 ? value.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) : "-";

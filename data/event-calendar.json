@@ -1,0 +1,38 @@
+{
+  "_source": "FOMC: federalreserve.gov tentative schedule (press release 2024-08-09) · US blackout = both meeting days (ET); DOMESTIC = KST day after day 2 (statement 2pm ET lands KST morning). Earnings: manual, per symbol; missing => UNKNOWN => 보류.",
+  "fomc": {
+    "verifiedFrom": "20260101",
+    "verifiedThrough": "20261231",
+    "blackout": {
+      "US_NASDAQ": [
+        "20260127",
+        "20260128",
+        "20260317",
+        "20260318",
+        "20260428",
+        "20260429",
+        "20260616",
+        "20260617",
+        "20260728",
+        "20260729",
+        "20260915",
+        "20260916",
+        "20261027",
+        "20261028",
+        "20261208",
+        "20261209"
+      ],
+      "DOMESTIC": [
+        "20260129",
+        "20260319",
+        "20260430",
+        "20260618",
+        "20260730",
+        "20260917",
+        "20261029",
+        "20261210"
+      ]
+    }
+  },
+  "earnings": {}
+}

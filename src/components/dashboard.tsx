@@ -40,6 +40,7 @@ import {
 import { VTS_BASE_URL } from "@/lib/domain";
 import { NewsResearchPanel } from "@/components/news-research-panel";
 import { MarketComparisonPanel } from "@/components/market-comparison-panel";
+import { ScorecardPanel } from "@/components/scorecard-panel";
 
 interface DashboardData {
   health: {
@@ -545,6 +546,7 @@ export function Dashboard() {
           </Alert>
         )}
 
+        <ScorecardPanel />
         <MarketComparisonPanel />
         <NewsResearchPanel running={data.agent.isRunning} targets={[
           ...data.agent.watchlist.map((item) => ({ market: "DOMESTIC" as const, stockCode: String(item.stockCode), stockName: String(item.stockName) })),

@@ -2,7 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { assessNews, NEWS_VERSION, targetKey, type NewsArticle, type NewsFeed, type NewsTarget } from "@/lib/news-model";
+import { assessNews, matchNews, NEWS_VERSION, targetKey, type NewsArticle, type NewsFeed, type NewsTarget } from "@/lib/news-model";
 import { feedSpecs, fetchNewsFeed } from "@/lib/news-feeds";
 import { advanceShadow, bookSummary, emptyBook, type ResearchObservation, type ShadowBook } from "@/lib/news-shadow";
 import type { StrategySignal } from "@/lib/strategy";
@@ -159,3 +159,21 @@ export function researchBuyNewsBlock(
 }
 
 export type NewsResearchView = ReturnType<typeof researchView>;
+
+/**
+ * Headline-only view for the scorecard news perspective. Returns no price/chart data by design
+ * (past review: 15/17 news judgments copied the price signal).
+ */
+export function researchHeadlinesFor(target: NewsTarget, universe: NewsTarget[], nowMs: number = Date.now()): { fresh: boolean; directHeadlines: string[] } {
+  let current: ResearchState;
+  try { current = getState(); } catch { return { fresh: false, directHeadlines: [] }; }
+  const feed = current.feeds.find((f) => f.id === targetKey(target));
+  const age = nowMs - Date.parse(feed?.lastSuccessAt ?? "");
+  const fresh = !!feed && !feed.error && Number.isFinite(age) && age >= 0 && age <= 15 * 60_000;
+  const directHeadlines = current.articles.filter((a) => {
+    const published = Date.parse(a.publishedAt), seen = Date.parse(a.firstSeenAt);
+    return Number.isFinite(published) && Number.isFinite(seen) && published <= nowMs && seen <= nowMs && nowMs - published <= 48 * 3600_000;
+  }).map((a) => matchNews(a, target, universe))
+    .filter((m) => !!m && m.relation === "DIRECT" && !m.reason.startsWith("여러 종목")).map((m) => m!.article.title);
+  return { fresh, directHeadlines };
+}

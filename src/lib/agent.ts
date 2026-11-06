@@ -1,6 +1,12 @@
 import "server-only";
 
-import { analyzeTrend, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
+import { analyzeTrend, completedBars, type DailyBar } from "@/lib/strategy";
+import { conclusionToOrderSide, decideScorecard, DECISION_ENGINE_VERSION, eventStatus, scoreFlows, scoreFundamentals,
+  scoreMacro, scoreNews, scoreTechnical, technicalLevels } from "@/lib/scorecard";
+import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeScorecardUniverse } from "@/lib/scorecard-data";
+import { ownedLot } from "@/lib/ownership";
+import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
+import { USD_KRW_SAFETY_RATE } from "@/lib/domain";
 import { EMPTY_CYCLE_SUMMARY, WatchlistItem } from "@/lib/domain";
 import {
   KisVtsClient,
@@ -14,10 +20,10 @@ import {
   setOverseasBalanceSnapshot,
   state,
 } from "@/lib/store";
-import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills, strategyValuation } from "@/lib/vts-execution";
+import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 import { recordPerformance } from "@/lib/performance-history";
-import { PAPER_CAPITAL_KRW } from "@/lib/trading-limits";
-import { observeResearch, refreshResearchNews } from "@/lib/news-research";
+import { marketRiskLimits, PAPER_CAPITAL_KRW } from "@/lib/trading-limits";
+import { observeResearch, refreshResearchNews, researchHeadlinesFor } from "@/lib/news-research";
 
 const globalAgent = globalThis as typeof globalThis & {
   __vtsAgentTimer?: ReturnType<typeof setInterval>;
@@ -83,27 +89,66 @@ async function analyzeWatchlistItem(
     signal.side === "HOLD" ? signal.reason : "Rule Engine 검증 대기";
   state.lastCycleSummary.signalsGenerated += 1;
 
-  if (price && signal.side !== "HOLD") {
+  // Live paper-order decision: 5-perspective scorecard (legacy trend signal is display/research only).
+  const card = buildScorecard(item, price, bars);
+  item.analysis = conclusionToOrderSide(card.conclusion);
+  item.blockedReason = `${card.conclusion} · ${card.filters.join(",") || "필터 통과"}`;
+  const side = item.analysis;
+  if (price && side !== "HOLD") {
     const lastDate = bars.at(-1)?.date ?? "";
     const ageDays = lastDate ? (Date.now() - Date.parse(lastDate.slice(0, 4) + "-" + lastDate.slice(4, 6) + "-" + lastDate.slice(6, 8) + "T00:00:00Z")) / 86400_000 : Infinity;
-    if (ageDays > 7 || (signal.side === "BUY" && Math.abs(price / bars.at(-1)!.close - 1) > 0.02)) {
+    if (ageDays > 7 || (side === "BUY" && Math.abs(price / bars.at(-1)!.close - 1) > 0.02)) {
       item.blockedReason = "STALE_CANDLES_OR_ENTRY_GAP"; return;
     }
-    const signalId = [STRATEGY_VERSION, item.market, item.stockCode, lastDate, signal.side].join(":");
+    const signalDate = card.technicalDate ?? lastDate;
+    const signalId = [DECISION_ENGINE_VERSION, item.market, item.stockCode, signalDate, side].join(":");
     const order = await executeVtsMockOrder(client, {
       market: item.market,
       stockCode: item.stockCode,
       stockName: item.stockName,
-      side: signal.side,
-      confidence: signal.confidence,
+      side,
+      confidence: 100, // only clear scorecard conclusions reach here; safety gates still apply
       price,
       signalId,
-      signalDate: signal.signalDate ?? undefined,
-      stopFraction: signal.stopFraction,
+      signalDate,
+      stopFraction: card.stopFraction,
       trendMa: signal.trendMa,
     });
     item.blockedReason = order?.blockedReason ?? "";
   }
+}
+
+function buildScorecard(item: WatchlistItem, price: number | null, kisBars: DailyBar[]) {
+  const universe = [...state.watchlist, ...state.usWatchlist];
+  const target = { market: item.market, stockCode: item.stockCode, stockName: item.stockName };
+  const data = scorecardData(item.market, item.stockCode);
+  const marketDate = item.market === "US_NASDAQ" ? usMarketDate() : domesticMarketDate();
+  const cacheBars = completedBars(data.symbol?.bars ?? [], marketDate);
+  const technicalBars = cacheBars.length >= 200 ? cacheBars : completedBars(kisBars, marketDate);
+  const technical = technicalLevels(technicalBars);
+  const lot = ownedLot(state.vtsOrders, item.market, item.stockCode);
+  const limits = marketRiskLimits(item.market);
+  const fx = item.market === "US_NASDAQ" ? USD_KRW_SAFETY_RATE : 1;
+  const views = {
+    fundamentals: scoreFundamentals(data.symbol?.fundamentals ?? null),
+    flows: scoreFlows(data.symbol?.flows ?? null),
+    technical: scoreTechnical(technical),
+    // Structurally isolated: headlines + feed freshness only, no price/chart input.
+    news: scoreNews(researchHeadlinesFor(target, universe)),
+    macro: scoreMacro(data.macro),
+  };
+  const stopFraction = lot.quantity > 0 && lot.stopFraction > 0 ? lot.stopFraction : analyzeTrend(technicalBars.slice(-80)).stopFraction;
+  const card = decideScorecard({
+    ...target, price, views, technical, stopFraction,
+    holding: lot.quantity > 0 ? { quantity: lot.quantity, averagePrice: lot.averagePrice } : null,
+    portfolio: { heldNames: state.agentOwnedPositions.filter((p) => p.quantity > 0).length, maxNames: VTS_ORDER_LIMITS.maxPositions,
+      nameWeight: price ? (lot.quantity * price * fx) / PAPER_CAPITAL_KRW : null, maxNameFraction: limits.nameFraction },
+    events: eventStatus(eventCalendar(), item.market, item.stockCode, marketDate),
+  });
+  const full = { ...card, stopFraction, at: new Date().toISOString(), market: item.market, stockCode: item.stockCode, stockName: item.stockName,
+    dataGeneratedAt: data.generatedAt, technicalDate: technical?.lastDate ?? null, levels: technical };
+  setScorecard(full);
+  return full;
 }
 
 export async function runAgentCycle(): Promise<void> {
@@ -113,6 +158,8 @@ export async function runAgentCycle(): Promise<void> {
 
   try {
     const client = new KisVtsClient();
+    recordDecisionEngineCutover();
+    writeScorecardUniverse([...state.watchlist, ...state.usWatchlist]);
     void refreshResearchNews([...state.watchlist, ...state.usWatchlist]).catch(() => {
       addLog("ERROR", "뉴스 수집·저장 실패. 뉴스 비교 화면을 확인하세요.", "WARN");
     });
@@ -174,7 +221,7 @@ export async function runAgentCycle(): Promise<void> {
     state.lastCycleAt = new Date().toISOString();
     const valuation = strategyValuation();
     if (valuation.valid) state.performanceHistory = recordPerformance(state.performanceHistory, {
-      at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: STRATEGY_VERSION,
+      at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: DECISION_ENGINE_VERSION,
     });
     saveState();
   }
