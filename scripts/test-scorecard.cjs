@@ -107,7 +107,7 @@ check('event calendar: FOMC dates and earnings eve; outside coverage is unknown'
   assert.equal(sc.eventStatus(cal, 'DOMESTIC', '005930', '20261210').fomc, 'BLOCKED');
   assert.equal(sc.eventStatus(cal, 'DOMESTIC', '005930', '20261110').fomc, 'CLEAR');
   assert.equal(sc.eventStatus(cal, 'DOMESTIC', '005930', '20270105').fomc, 'UNKNOWN');
-  assert.equal(sc.eventStatus(cal, 'DOMESTIC', '005930', '20261110').earnings, 'UNKNOWN');
+  assert.equal(sc.eventStatus(cal, 'DOMESTIC', '999999', '20261110').earnings, 'UNKNOWN'); // symbol with no calendar entry
   const withE = { ...cal, earnings: { 'DOMESTIC:005930': { verifiedThrough: '20261231', dates: ['20261116'] } } };
   assert.equal(sc.eventStatus(withE, 'DOMESTIC', '005930', '20261113').earnings, 'BLOCKED'); // Friday before Monday earnings
   assert.equal(sc.eventStatus(withE, 'DOMESTIC', '005930', '20261110').earnings, 'CLEAR');
