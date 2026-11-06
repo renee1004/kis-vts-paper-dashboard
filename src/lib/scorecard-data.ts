@@ -51,9 +51,16 @@ const calendarSchema = z.object({
   fomc: z.object({ verifiedFrom: z.string(), verifiedThrough: z.string(), blackout: z.object({ DOMESTIC: z.array(z.string()), US_NASDAQ: z.array(z.string()) }) }),
   earnings: z.record(z.string(), z.object({ verifiedThrough: z.string(), dates: z.array(z.string()), source: z.string().optional() })),
 });
+const autoSchema = z.object({ earnings: calendarSchema.shape.earnings });
+/** Repo calendar (FOMC + manual earnings) merged over collector auto dates in .data; manual wins. */
 export function eventCalendar(): EventCalendar | null {
-  try { return calendarSchema.parse(JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "event-calendar.json"), "utf8"))); }
+  let base: EventCalendar;
+  try { base = calendarSchema.parse(JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "event-calendar.json"), "utf8"))); }
   catch { return null; }
+  try {
+    const auto = autoSchema.parse(JSON.parse(fs.readFileSync(path.join(root(), "event-calendar-auto.json"), "utf8")));
+    return { ...base, earnings: { ...auto.earnings, ...base.earnings } };
+  } catch { return base; }
 }
 /**
  * One-time cutover marker: live VTS paper orders switch from the legacy trend signal to the

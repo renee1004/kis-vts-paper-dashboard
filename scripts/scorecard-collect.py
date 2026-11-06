@@ -212,20 +212,17 @@ for t in universe():
         if dates: earnings_auto[key] = {"dates": dates, "verifiedThrough": dates[0], "source": f"auto:yfinance({sym})"}
     symbols[key] = row
 
-# Merge auto earnings into the repo calendar; manual entries (no "auto:" source) win.
-cal_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "event-calendar.json")
+# Auto earnings go to an ignored runtime file ($DATA_DIR/event-calendar-auto.json) so the tracked
+# data/event-calendar.json (FOMC + manual entries) never gets a git diff. Manual entries win at read time.
 earnings_missing = [k for k in symbols if k not in earnings_auto]
 try:
-    with open(cal_path, encoding="utf8") as f: cal = json.load(f)
-    for k, v in earnings_auto.items():
-        old = cal["earnings"].get(k)
-        if old and not str(old.get("source", "")).startswith("auto:"): continue
-        cal["earnings"][k] = v
-    tmp = cal_path + ".tmp"
-    with open(tmp, "w", encoding="utf8") as f: json.dump(cal, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, cal_path)
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    fd2, tmp2 = tempfile.mkstemp(dir=root, prefix=".event-calendar-auto.")
+    with os.fdopen(fd2, "w", encoding="utf8") as f:
+        json.dump({"generatedAt": dt.datetime.now(dt.timezone.utc).isoformat(), "earnings": earnings_auto}, f, ensure_ascii=False, indent=1)
+    os.replace(tmp2, os.path.join(root, "event-calendar-auto.json"))
 except Exception as e:  # noqa: BLE001
-    note("event-calendar merge", e)
+    note("event-calendar-auto write", e)
 
 out = {"version": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
        "symbols": symbols, "macro": m, "errors": errors[:50]}

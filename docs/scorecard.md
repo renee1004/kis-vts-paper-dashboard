@@ -59,7 +59,7 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 | 미국 수급 | 수집 안 함 → 미확인 | | | 기관 보유 변화는 분기 13F 기준이라 시차가 커서 정직한 단기 수급 대용이 아님 |
 | ETF 펀더멘털 | 미확인(ETF는 PER·PBR 의미 없음) | | | 수급은 네이버로 채움 |
 | 일봉·거시 | FinanceDataReader | KIS 일봉(200개 미만이면 기술적 미확인) | | |
-| 실적 발표일 | 수동 항목(`source`가 `auto:`로 시작하지 않음, 덮어쓰지 않음) | yfinance calendar (미국, 국내 `.KS`/`.KQ`) | ETF는 실적 없음(30일 유효) | 다음 발표일까지를 확인 범위로 봄. 못 찾으면 미확인 → 신규 매수 보류 |
+| 실적 발표일 | 수동 항목(`data/event-calendar.json`, git 관리) — 자동 수집분은 `.data/event-calendar-auto.json`(git 제외)에 저장, 읽을 때 수동이 우선 | yfinance calendar (미국, 국내 `.KS`/`.KQ`) | ETF는 실적 없음(30일 유효) | 다음 발표일까지를 확인 범위로 봄. 못 찾으면 미확인 → 신규 매수 보류 |
 
 한계:
 - KIS 값은 **서버 재시작 후** 실행 사이클에서만 채워집니다. VTS에서 `inquire-investor`가 지원되는지는 아직 실제 호출로 확인하지 않았습니다(키 보호를 위해 별도 테스트 호출을 하지 않음). 실패하면 자동으로 네이버 캐시를 씁니다.
@@ -67,3 +67,6 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 - yfinance 국내 실적일은 추정일일 수 있습니다(예: 잠정실적 공시일과 다를 수 있음). 중요한 종목은 수동 항목으로 덮어쓰세요:
   `"DOMESTIC:005930": {"dates": ["20270108"], "verifiedThrough": "20270331", "source": "manual"}`
 - 판단 예시 재현: `NEWS_DATA_DIR=<뉴스 원장 폴더> node scripts/scorecard-examples.cjs DOMESTIC:005930 US_NASDAQ:MSFT` (주문·KIS 호출 없음, 가격은 마지막 완료 종가)
+
+## 매일 수집 (cron)
+평일 16:40 KST: `crontab -l` 의 `scorecard-collect` 줄 참고. 로그 `.data/collect.log`. 수집은 git 추적 파일을 바꾸지 않습니다.

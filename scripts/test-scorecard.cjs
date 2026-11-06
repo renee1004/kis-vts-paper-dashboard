@@ -170,5 +170,13 @@ check('KIS quote cache: fresh values used, flows retry throttled after failure',
   assert.equal(kc.kisFlowsDue('000660', now + 3600_000), false);
   assert.equal(kc.kisFlowsDue('000660', now + 7 * 3600_000), true);
 });
+check('auto earnings from .data merge under manual repo entries', () => {
+  const data = load('src/lib/scorecard-data.ts');
+  fs.writeFileSync(path.join(testDir, 'event-calendar-auto.json'), JSON.stringify({ earnings: {
+    'DOMESTIC:111111': { dates: ['20261120'], verifiedThrough: '20261120', source: 'auto:test' } } }));
+  const cal = data.eventCalendar();
+  assert.equal(cal.earnings['DOMESTIC:111111'].source, 'auto:test');
+  assert.ok(cal.fomc.blackout.US_NASDAQ.includes('20261209'));
+});
 console.log(`${checks} scorecard checks passed`);
 fs.rmSync(testDir, { recursive: true, force: true });
