@@ -48,7 +48,14 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 - 시장지수 필터 A/B/C 그림자 비교(`market-comparison-v1`)는 계속 v2 추세 신호 기준선으로 돌아가며, 실제 주문과 섞이지 않습니다. `/api/strategy-comparison` 응답의 `liveDecisionEngine`에 교체 시점이 표시됩니다. 교체 시점 이전/이후 실제 모의주문 비교는 `cutoverAt` 기준으로 나눠서 보세요.
 
 ## 화면
-`ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지).
+`ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지). 패널 상단에 **참고 (미검증)** 로 PSR과 원유(WTI) 추세를 보여 주며, 이 값은 점수·결론·필터·모의주문에 쓰지 않습니다.
+
+## 참고 지표 (점수·주문 미사용)
+표시 전용입니다. `scoreFundamentals` / `scoreMacro` / `decideScorecard` / `conclusionToOrderSide`는 읽지 않습니다. 값이 없으면 출처는 `unknown`.
+| 값 | 의미 | 출처 | 계산 |
+|---|---|---|---|
+| PSR(주가매출비율) | 종목별 밸류에이션 참고 | 국내: KIS `inquire-price`의 `psr`(있으면) → 네이버 `totalInfos` `psr` → pykrx PSR 컬럼. 미국: yfinance `priceToSalesTrailing12Months`. FDR는 밸류에이션 비율이 없어 PSR에 쓰지 않음 | 수집 값을 그대로 표시. 펀더멘털 점수(PER·PBR·시총)와 별도 |
+| 원유(WTI) | 코스피 거시 참고. **원유가 코스피를 약 1.5~2개월 선행한다는 가설은 미검증** | FinanceDataReader `CL=F`(실패 시 `CL`, `WTI`) → yfinance `CL=F` | 완료 일봉 20/60일 이평 추세(상승: 종가>20>60, 하락: 종가<20 그리고 20<60, 그 외 혼조)와 약 40거래일(약 2개월) 변화율. `lagTradingDays: 40` |
 
 ## 데이터 출처 우선순위 (v3.1)
 | 값 | 1순위 | 2순위 | 3순위 | 비고 |
@@ -56,6 +63,8 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 | 국내 PER·PBR·시총 | KIS `inquire-price`(FHKST01010100) 응답의 `per`·`pbr`·`hts_avls` — 앱이 이미 하는 현재가 호출에서 같이 저장(추가 호출 없음) | 네이버 모바일 JSON `m.stock.naver.com/api/stock/{code}/integration` | pykrx (KRX 로그인 필요, 현재 실패) | 이유 문구에 `[KIS]`/`[NAVER]`/`[PYKRX]` 표시 |
 | 국내 외국인·기관 순매수 | KIS `inquire-investor`(FHKST01010900), 6시간 캐시, 실패 시 6시간 재시도 안 함 | 네이버 `.../{code}/trend?pageSize=5` (순매수 **수량×종가** 근사, 원) | pykrx | KIS는 백만원 단위 거래대금 |
 | 미국 PER·PBR·시총 | yfinance `info`(trailingPE, priceToBook, marketCap×원달러) | — | — | |
+| 국내·미국 PSR (참고) | 위와 동일 경로 + yfinance `priceToSalesTrailing12Months` | — | — | **점수 미사용.** 출처는 값마다 기록, 없으면 `unknown` |
+| 원유 WTI (참고) | FinanceDataReader `CL=F` | yfinance `CL=F` | — | **점수 미사용.** 코스피 1.5~2개월 선행 가설은 미검증 |
 | 미국 수급 | 수집 안 함 → 미확인 | | | 기관 보유 변화는 분기 13F 기준이라 시차가 커서 정직한 단기 수급 대용이 아님 |
 | ETF 펀더멘털 | 미확인(ETF는 PER·PBR 의미 없음) | | | 수급은 네이버로 채움 |
 | 일봉·거시 | FinanceDataReader | KIS 일봉(200개 미만이면 기술적 미확인) | | |

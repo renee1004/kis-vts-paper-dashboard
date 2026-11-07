@@ -670,8 +670,9 @@ export class KisVtsClient {
     if (price <= 0) throw new Error("KIS_PRICE_EMPTY");
     // Same response carries valuation fields; keep only these non-secret numbers for the scorecard.
     const per = Number(output.per), pbr = Number(output.pbr), capEok = Number(output.hts_avls);
+    const psrRaw = Number(output.psr), psr = Number.isFinite(psrRaw) && psrRaw > 0 ? psrRaw : null;
     if (Number.isFinite(per) && Number.isFinite(pbr) && Number.isFinite(capEok) && capEok > 0 && (per !== 0 || pbr !== 0)) {
-      setKisQuoteFundamentals(stockCode, { per: per || null, pbr: pbr || null, marketCapKrw: capEok * 1e8, at: new Date().toISOString() });
+      setKisQuoteFundamentals(stockCode, { per: per || null, pbr: pbr || null, marketCapKrw: capEok * 1e8, at: new Date().toISOString(), psr });
     }
     return price;
   }

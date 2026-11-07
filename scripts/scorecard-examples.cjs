@@ -29,5 +29,7 @@ for (const arg of process.argv.slice(2)) {
     portfolio: { heldNames: 0, maxNames: 5, nameWeight: 0, maxNameFraction: marketRiskLimits(market).nameFraction },
     events: sc.eventStatus(data.eventCalendar(), market, stockCode, marketDate) });
   console.log(JSON.stringify({ symbol: arg, marketDate, priceUsed: 'last completed close', ...card,
-    orderSide: sc.conclusionToOrderSide(card.conclusion), levels: technical && { ma20: +technical.ma20.toFixed(2), ma60: +technical.ma60.toFixed(2), ma200: +technical.ma200.toFixed(2), high52w: technical.high52w, low52w: technical.low52w } }, null, 1));
+    orderSide: sc.conclusionToOrderSide(card.conclusion),
+    references: { psr: d.symbol?.psr ?? { psr: null, source: 'unknown' }, crudeOil: d.crudeOil },
+    levels: technical && { ma20: +technical.ma20.toFixed(2), ma60: +technical.ma60.toFixed(2), ma200: +technical.ma200.toFixed(2), high52w: technical.high52w, low52w: technical.low52w } }, null, 1));
 }

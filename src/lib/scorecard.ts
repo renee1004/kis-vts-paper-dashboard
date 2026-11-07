@@ -24,18 +24,84 @@ export interface MacroInput { vix: number | null; usdKrwChange20dPct: number | n
 /** Headline-only input. Deliberately has no price/chart fields. */
 export interface NewsOnlyInput { fresh: boolean; directHeadlines: string[] }
 
+/**
+ * Display-only references. Not a 6th view: never read by scoreFundamentals / scoreMacro /
+ * decideScorecard, and never mapped to an order. Source is "unknown" when the value is missing.
+ */
+export interface PsrReference { psr: number | null; source: string }
+export interface CrudeOilReference {
+  lastClose: number | null; ma20: number | null; ma60: number | null; trend: string | null;
+  laggedChange40dPct: number | null; lagTradingDays: number; asOf: string | null; source: string; symbol: string | null;
+}
+export const UNKNOWN_PSR: PsrReference = { psr: null, source: "unknown" };
+export const UNKNOWN_CRUDE_OIL: CrudeOilReference = {
+  lastClose: null, ma20: null, ma60: null, trend: null, laggedChange40dPct: null,
+  lagTradingDays: 40, asOf: null, source: "unknown", symbol: null,
+};
+
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+const rec = (v: unknown): Record<string, unknown> | null => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
+
+/** Scoring fields only. PSR and any other extras are dropped before the fundamentals view runs. */
+export function scoringFundamentals(input: unknown): FundamentalsInput | null {
+  const r = rec(input); if (!r) return null;
+  return {
+    per: finite(r.per) ? r.per : null, pbr: finite(r.pbr) ? r.pbr : null,
+    marketCapKrw: finite(r.marketCapKrw) ? r.marketCapKrw : null,
+    source: typeof r.source === "string" ? r.source : undefined,
+  };
+}
+/** Scoring fields only. Crude-oil extras on the same object cannot affect the macro view. */
+export function scoringMacro(input: unknown): MacroInput | null {
+  const r = rec(input); if (!r) return null;
+  return {
+    vix: finite(r.vix) ? r.vix : null,
+    usdKrwChange20dPct: finite(r.usdKrwChange20dPct) ? r.usdKrwChange20dPct : null,
+    us10yChange20dBp: finite(r.us10yChange20dBp) ? r.us10yChange20dBp : null,
+  };
+}
+export function referencePsr(input: unknown): PsrReference {
+  const r = rec(input); if (!r) return { ...UNKNOWN_PSR };
+  const psr = finite(r.psr) ? r.psr : null;
+  const source = psr == null ? "unknown" : (typeof r.psrSource === "string" && r.psrSource.trim() ? r.psrSource.trim() : "unknown");
+  return { psr, source };
+}
+export function referenceCrudeOil(input: unknown): CrudeOilReference {
+  const r = rec(input); if (!r) return { ...UNKNOWN_CRUDE_OIL };
+  const n = (k: string) => finite(r[k]) ? r[k] as number : null;
+  const lastClose = n("lastClose"), ma20 = n("ma20"), ma60 = n("ma60"), laggedChange40dPct = n("laggedChange40dPct");
+  const source = typeof r.source === "string" && r.source.trim() ? r.source.trim() : "unknown";
+  return {
+    lastClose, ma20, ma60,
+    trend: typeof r.trend === "string" && r.trend.trim() ? r.trend.trim() : null,
+    laggedChange40dPct, lagTradingDays: 40,
+    asOf: typeof r.asOf === "string" ? r.asOf : null,
+    source: lastClose == null && ma20 == null && ma60 == null && laggedChange40dPct == null ? "unknown" : source,
+    symbol: typeof r.symbol === "string" && r.symbol.trim() ? r.symbol.trim() : null,
+  };
+}
+/** Collector uses the same 20/60-day trend and 40-trading-day change. Not used by decideScorecard. */
+export function crudeOilFromBars(bars: { date: string; close: number }[], source: string, symbol: string | null): CrudeOilReference {
+  const ok = bars.filter((b) => /^\d{8}$/.test(b.date) && finite(b.close) && b.close > 0);
+  if (!ok.length) return { ...UNKNOWN_CRUDE_OIL };
+  const closes = ok.map((b) => b.close), lastClose = closes.at(-1)!;
+  const ma20 = closes.length >= 20 ? mean(closes.slice(-20)) : null, ma60 = closes.length >= 60 ? mean(closes.slice(-60)) : null;
+  const trend = ma20 == null || ma60 == null ? null : lastClose > ma20 && ma20 > ma60 ? "상승" : lastClose < ma20 && ma20 < ma60 ? "하락" : "혼조";
+  const laggedChange40dPct = closes.length >= 41 ? (lastClose / closes.at(-41)! - 1) * 100 : null;
+  return { lastClose, ma20, ma60, trend, laggedChange40dPct, lagTradingDays: 40, asOf: ok.at(-1)!.date, source: source.trim() || "unknown", symbol };
+}
 
 const tag = (source?: string) => source ? ` [${source}]` : "";
 export function scoreFundamentals(f: FundamentalsInput | null): ViewResult {
-  if (!f || !finite(f.per) || !finite(f.pbr) || !finite(f.marketCapKrw) || f.marketCapKrw <= 0)
-    return { score: "UNKNOWN", reason: "PER·PBR·시가총액 데이터 없음" + tag(f?.source) };
-  const t = tag(f.source);
-  if (f.marketCapKrw < 100_000_000_000) return { score: -1, reason: `시가총액 1,000억 원 미만(유동성 위험)${t}` };
-  if (f.per <= 0 || f.per > 40 || f.pbr > 5) return { score: -1, reason: `적자 또는 고평가 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})${t}` };
-  if (f.per <= 15 && f.pbr > 0 && f.pbr <= 1.5) return { score: 1, reason: `저평가 구간 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})${t}` };
-  return { score: 0, reason: `중립 밸류에이션 (PER ${f.per.toFixed(1)}, PBR ${f.pbr.toFixed(2)})${t}` };
+  const input = scoringFundamentals(f);
+  if (!input || !finite(input.per) || !finite(input.pbr) || !finite(input.marketCapKrw) || input.marketCapKrw <= 0)
+    return { score: "UNKNOWN", reason: "PER·PBR·시가총액 데이터 없음" + tag(input?.source) };
+  const t = tag(input.source);
+  if (input.marketCapKrw < 100_000_000_000) return { score: -1, reason: `시가총액 1,000억 원 미만(유동성 위험)${t}` };
+  if (input.per <= 0 || input.per > 40 || input.pbr > 5) return { score: -1, reason: `적자 또는 고평가 (PER ${input.per.toFixed(1)}, PBR ${input.pbr.toFixed(2)})${t}` };
+  if (input.per <= 15 && input.pbr > 0 && input.pbr <= 1.5) return { score: 1, reason: `저평가 구간 (PER ${input.per.toFixed(1)}, PBR ${input.pbr.toFixed(2)})${t}` };
+  return { score: 0, reason: `중립 밸류에이션 (PER ${input.per.toFixed(1)}, PBR ${input.pbr.toFixed(2)})${t}` };
 }
 
 export function scoreFlows(f: FlowsInput | null): ViewResult {
@@ -83,10 +149,11 @@ export function scoreNews(input: unknown): ViewResult {
 }
 
 export function scoreMacro(m: MacroInput | null): ViewResult {
-  if (!m || !finite(m.vix) || !finite(m.usdKrwChange20dPct) || !finite(m.us10yChange20dBp)) return { score: "UNKNOWN", reason: "환율·금리·VIX 중 데이터 없음" };
-  if (m.vix >= 30 || m.usdKrwChange20dPct >= 3 || m.us10yChange20dBp >= 40) return { score: -1, reason: `위험회피 (VIX ${m.vix.toFixed(1)}, 원달러 20일 ${m.usdKrwChange20dPct.toFixed(1)}%, 미10년 ${m.us10yChange20dBp.toFixed(0)}bp)` };
-  if (m.vix < 20 && m.usdKrwChange20dPct < 1 && m.us10yChange20dBp < 15) return { score: 1, reason: `우호적 (VIX ${m.vix.toFixed(1)})` };
-  return { score: 0, reason: `중립 (VIX ${m.vix.toFixed(1)})` };
+  const input = scoringMacro(m);
+  if (!input || !finite(input.vix) || !finite(input.usdKrwChange20dPct) || !finite(input.us10yChange20dBp)) return { score: "UNKNOWN", reason: "환율·금리·VIX 중 데이터 없음" };
+  if (input.vix >= 30 || input.usdKrwChange20dPct >= 3 || input.us10yChange20dBp >= 40) return { score: -1, reason: `위험회피 (VIX ${input.vix.toFixed(1)}, 원달러 20일 ${input.usdKrwChange20dPct.toFixed(1)}%, 미10년 ${input.us10yChange20dBp.toFixed(0)}bp)` };
+  if (input.vix < 20 && input.usdKrwChange20dPct < 1 && input.us10yChange20dBp < 15) return { score: 1, reason: `우호적 (VIX ${input.vix.toFixed(1)})` };
+  return { score: 0, reason: `중립 (VIX ${input.vix.toFixed(1)})` };
 }
 
 export type EventStatus = "CLEAR" | "BLOCKED" | "UNKNOWN";
