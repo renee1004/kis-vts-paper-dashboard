@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createChart, LineSeries, type IChartApi } from "lightweight-charts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { StoredScorecard } from "@/lib/scorecard-data";
+import type { CrudeOilReference, PsrReference, StoredScorecard } from "@/lib/scorecard-data";
 
 type Point = { date: string; value: number };
 type Chart = { bars: Point[]; ma20: Point[]; ma60: Point[]; ma200: Point[] } | null;
@@ -27,9 +27,29 @@ function PriceChart({ chart }: { chart: Chart }) {
   return <div><div ref={ref} /><p className="text-xs text-muted-foreground">검정 종가 · 파랑 20일 · 주황 60일 · 빨강 200일 (차트: TradingView Lightweight Charts)</p></div>;
 }
 
+function fmtPct(n: number | null | undefined) {
+  return n == null ? "미확인" : `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+function ReferenceNotes({ psr, crudeOil }: { psr?: PsrReference; crudeOil: CrudeOilReference | null }) {
+  const oil = crudeOil;
+  const oilSource = oil?.source && oil.source !== "unknown" ? oil.source : "unknown";
+  const psrText = psr?.psr != null ? `${psr.psr.toFixed(2)}배` : "미확인";
+  const psrSource = psr?.psr != null ? (psr.source || "unknown") : "unknown";
+  return <div className="rounded-md border border-dashed p-2 space-y-1 text-sm">
+    <p className="font-medium">참고 (미검증)</p>
+    <p className="text-xs text-muted-foreground">점수·결론·필터·모의주문에 사용하지 않습니다.</p>
+    {psr && <p>PSR(주가매출비율) {psrText} [{psrSource}]</p>}
+    <p>원유(WTI) 코스피 선행 가설(약 1.5~2개월, 미검증) · 20/60일 추세 {oil?.trend ?? "미확인"}
+      · 약 40거래일 변화 {fmtPct(oil?.laggedChange40dPct ?? null)}
+      · 종가 {oil?.lastClose != null ? oil.lastClose.toFixed(2) : "미확인"}
+      [{oilSource}{oil?.symbol ? ` ${oil.symbol}` : ""}]</p>
+  </div>;
+}
+
 export function ScorecardPanel() {
   const [cards, setCards] = useState<StoredScorecard[]>([]);
   const [cutover, setCutover] = useState<{ cutoverAt: string; previousVersion: string } | null>(null);
+  const [crudeOil, setCrudeOil] = useState<CrudeOilReference | null>(null);
   const [selected, setSelected] = useState<string>("");
   const [chart, setChart] = useState<Chart>(null);
   const [error, setError] = useState("");
@@ -40,7 +60,8 @@ export function ScorecardPanel() {
         const query = selected ? `?market=${market}&stockCode=${encodeURIComponent(stockCode)}` : "";
         const result = await (await fetch(`/api/scorecard${query}`, { cache: "no-store" })).json();
         if (!result.success) throw new Error(result.error);
-        setCards(result.data.cards); setCutover(result.data.cutover); setChart(result.data.chart); setError("");
+        setCards(result.data.cards); setCutover(result.data.cutover); setChart(result.data.chart);
+        setCrudeOil(result.data.crudeOil ?? null); setError("");
       } catch (cause) { setError(cause instanceof Error ? cause.message : "점수판 조회 실패"); }
     };
     const first = setTimeout(() => void load(), 0), timer = setInterval(() => void load(), 30_000);
@@ -53,6 +74,7 @@ export function ScorecardPanel() {
         {cutover && ` 교체 시점: ${new Date(cutover.cutoverAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (이전 기록은 ${cutover.previousVersion})`}</CardDescription></CardHeader>
     <CardContent className="space-y-3">
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <ReferenceNotes psr={card?.references?.psr} crudeOil={crudeOil} />
       {!cards.length && <p className="text-sm text-muted-foreground">분석 사이클 실행 후 표시됩니다.</p>}
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left">
         <th>종목</th>{Object.values(label).map((l) => <th key={l}>{l}</th>)}<th>결론</th><th>필터</th></tr></thead>

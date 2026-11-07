@@ -1,8 +1,8 @@
 import "server-only";
 
 import { analyzeTrend, completedBars, type DailyBar } from "@/lib/strategy";
-import { conclusionToOrderSide, decideScorecard, DECISION_ENGINE_VERSION, eventStatus, scoreFlows, scoreFundamentals,
-  scoreMacro, scoreNews, scoreTechnical, technicalLevels } from "@/lib/scorecard";
+import { conclusionToOrderSide, decideScorecard, DECISION_ENGINE_VERSION, eventStatus, referencePsr, scoreFlows, scoreFundamentals,
+  scoreMacro, scoreNews, scoreTechnical, technicalLevels, UNKNOWN_PSR } from "@/lib/scorecard";
 import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeScorecardUniverse } from "@/lib/scorecard-data";
 import { ownedLot } from "@/lib/ownership";
 import { kisFlows, kisFlowsDue, kisFundamentals, noteKisFlowsFailure, setKisFlows } from "@/lib/kis-quote-cache";
@@ -152,8 +152,10 @@ function buildScorecard(item: WatchlistItem, price: number | null, kisBars: Dail
       nameWeight: price ? (lot.quantity * price * fx) / PAPER_CAPITAL_KRW : null, maxNameFraction: limits.nameFraction },
     events: eventStatus(eventCalendar(), item.market, item.stockCode, marketDate),
   });
+  const kisPsr = kisFund ? referencePsr({ psr: kisFund.psr ?? null, psrSource: "KIS" }) : UNKNOWN_PSR;
   const full = { ...card, stopFraction, at: new Date().toISOString(), market: item.market, stockCode: item.stockCode, stockName: item.stockName,
-    dataGeneratedAt: data.generatedAt, technicalDate: technical?.lastDate ?? null, levels: technical };
+    dataGeneratedAt: data.generatedAt, technicalDate: technical?.lastDate ?? null, levels: technical,
+    references: { psr: kisPsr.psr != null ? kisPsr : (data.symbol?.psr ?? UNKNOWN_PSR) } };
   setScorecard(full);
   return full;
 }

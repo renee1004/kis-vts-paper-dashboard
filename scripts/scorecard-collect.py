@@ -6,8 +6,11 @@ and auto earnings dates into data/event-calendar.json (manual entries are never 
 Source priority (each value records its source):
  KR valuation/flows: [KIS Open API, fetched by the app at runtime] > Naver mobile JSON (cached 6h, 1 req/s) > pykrx (needs KRX login)
  US valuation: yfinance (trailingPE, priceToBook, marketCap). US flows: not collected (no honest free proxy) -> unknown.
- Bars/macro: FinanceDataReader. Earnings dates: yfinance calendar (US, KR .KS/.KQ); ETFs have none.
+ KR/US PSR (reference-only, not scored): same sources; US uses yfinance priceToSalesTrailing12Months. Missing => psrSource "unknown".
+ Bars/macro: FinanceDataReader. Crude oil WTI (reference-only KOSPI lag hypothesis): FDR then yfinance CL=F.
+ Earnings dates: yfinance calendar (US, KR .KS/.KQ); ETFs have none.
 Anything that fails is written as null so the TS side scores it as 'unknown' (never 0).
+PSR and crudeOil are stored for display only; the TS scoring schema strips them and does not use them.
 
 Usage: .venv-data/bin/python scripts/scorecard-collect.py [DOMESTIC:005930 US_NASDAQ:AAPL ...]
 Without args, reads $DATA_DIR/scorecard-universe.json written by the dashboard agent.
@@ -49,6 +52,23 @@ def fin(v):
         return v if v == v and abs(v) != float("inf") else None
     except Exception:  # noqa: BLE001
         return None
+
+def attach_psr(fund, psr, source):
+    """PSR is reference-only. Record source per value; 'unknown' when missing."""
+    if not fund: return fund
+    if psr is not None:
+        fund["psr"], fund["psrSource"] = psr, source
+    else:
+        fund["psr"], fund["psrSource"] = None, "unknown"
+    return fund
+
+def pick_psr(vals, num):
+    if not vals: return None
+    for key, value in vals.items():
+        if str(key).lower() == "psr":
+            v = num(value)
+            if v is not None: return v
+    return None
 
 def bars_for(code):
     if not fdr: return []
@@ -97,8 +117,9 @@ def naver_kr(code):
         vals = {x.get("code"): x.get("value") for x in info.get("totalInfos", [])}
         num = lambda v: fin(str(v).replace(",", "").replace("배", "").replace("원", "").replace("%", "")) if v not in (None, "", "N/A", "-") else None
         if not is_etf:
-            fundamentals = {"per": num(vals.get("per")), "pbr": num(vals.get("pbr")),
-                            "marketCapKrw": korean_amount(vals.get("marketValue")), "asOf": today.isoformat(), "source": "NAVER"}
+            fundamentals = attach_psr({"per": num(vals.get("per")), "pbr": num(vals.get("pbr")),
+                            "marketCapKrw": korean_amount(vals.get("marketValue")), "asOf": today.isoformat(), "source": "NAVER"},
+                            pick_psr(vals, num), "NAVER")
     except Exception as e:  # noqa: BLE001
         note(f"naver integration {code}", e)
     try:
@@ -121,8 +142,10 @@ def pykrx_kr(code):
         with contextlib.redirect_stdout(io.StringIO()):
             f = krx.get_market_fundamental(begin, end, code); c = krx.get_market_cap(begin, end, code)
         if len(f) and len(c):
-            fundamentals = {"per": fin(f["PER"].iloc[-1]) or None, "pbr": fin(f["PBR"].iloc[-1]) or None,
-                            "marketCapKrw": fin(c["시가총액"].iloc[-1]), "asOf": f.index[-1].strftime("%Y%m%d"), "source": "PYKRX"}
+            psr_col = next((col for col in f.columns if str(col).upper() == "PSR"), None)
+            fundamentals = attach_psr({"per": fin(f["PER"].iloc[-1]) or None, "pbr": fin(f["PBR"].iloc[-1]) or None,
+                            "marketCapKrw": fin(c["시가총액"].iloc[-1]), "asOf": f.index[-1].strftime("%Y%m%d"), "source": "PYKRX"},
+                            fin(f[psr_col].iloc[-1]) if psr_col is not None else None, "PYKRX")
     except Exception as e:  # noqa: BLE001
         note(f"pykrx fundamentals {code}", e)
     try:
@@ -145,8 +168,9 @@ def yf_fundamentals(symbol, fx):
     try:
         i = yf.Ticker(symbol).info
         cap = fin(i.get("marketCap"))
-        return {"per": fin(i.get("trailingPE")), "pbr": fin(i.get("priceToBook")),
-                "marketCapKrw": cap * fx if cap and fx else None, "asOf": today.isoformat(), "source": "YFINANCE"}
+        return attach_psr({"per": fin(i.get("trailingPE")), "pbr": fin(i.get("priceToBook")),
+                "marketCapKrw": cap * fx if cap and fx else None, "asOf": today.isoformat(), "source": "YFINANCE"},
+                fin(i.get("priceToSalesTrailing12Months")), "YFINANCE")
     except Exception as e:  # noqa: BLE001
         note(f"yfinance info {symbol}", e); return None
 
@@ -180,8 +204,52 @@ def macro():
             "us10yChange20dBp": fin((ust.iloc[-1] - ust.iloc[-21]) * 100) if ust is not None else None,
             "asOf": today.isoformat()}
 
+UNKNOWN_OIL = {"lastClose": None, "ma20": None, "ma60": None, "trend": None, "laggedChange40dPct": None,
+               "lagTradingDays": 40, "asOf": None, "source": "unknown", "symbol": None}
+
+def oil_bars():
+    """Completed WTI bars. FDR first (same family as other macro series), then yfinance CL=F."""
+    if fdr:
+        for sym in ("CL=F", "CL", "WTI"):
+            try:
+                rows = bars_for(sym)
+                if len(rows) >= 20: return rows, "FDR", sym
+            except Exception as e:  # noqa: BLE001
+                note(f"crudeOil FDR {sym}", e)
+    if yf:
+        try:
+            hist = yf.Ticker("CL=F").history(start=start, end=today.isoformat(), auto_adjust=False)
+            out = []
+            for idx, row in hist.iterrows():
+                c = fin(row.get("Close"))
+                if c and c > 0:
+                    d = idx.strftime("%Y%m%d") if hasattr(idx, "strftime") else None
+                    if d: out.append({"date": d, "close": c})
+            if len(out) >= 20: return out, "YFINANCE", "CL=F"
+        except Exception as e:  # noqa: BLE001
+            note("crudeOil yfinance CL=F", e)
+    return [], "unknown", None
+
+def crude_oil():
+    """20/60-day trend and ~40-trading-day change. Reference-only (unvalidated KOSPI lead claim). Same formula as src/lib/scorecard.ts crudeOilFromBars."""
+    rows, source, symbol = oil_bars()
+    if not rows: return dict(UNKNOWN_OIL)
+    closes = [b["close"] for b in rows]
+    last, n = closes[-1], len(closes)
+    ma20 = sum(closes[-20:]) / 20 if n >= 20 else None
+    ma60 = sum(closes[-60:]) / 60 if n >= 60 else None
+    trend = None
+    if ma20 is not None and ma60 is not None:
+        trend = "상승" if last > ma20 > ma60 else "하락" if last < ma20 and ma20 < ma60 else "혼조"
+    lagged = (last / closes[-41] - 1) * 100 if n >= 41 else None
+    return {"lastClose": last, "ma20": fin(ma20), "ma60": fin(ma60), "trend": trend,
+            "laggedChange40dPct": fin(lagged), "lagTradingDays": 40, "asOf": rows[-1]["date"],
+            "source": source, "symbol": symbol}
+
 try: m = macro()
 except Exception as e: m = None; note("macro", e)  # noqa: BLE001
+try: oil = crude_oil()
+except Exception as e: oil = dict(UNKNOWN_OIL); note("crudeOil", e)  # noqa: BLE001
 fx_now = None
 try:
     fx_now = fin(fdr.DataReader("USD/KRW", (today - dt.timedelta(days=10)).isoformat())["Close"].dropna().iloc[-1]) if fdr else None
@@ -200,6 +268,8 @@ for t in universe():
         if (row["fundamentals"] is None and not row["isEtf"]) or row["flows"] is None:
             pf, pl = pykrx_kr(code)
             if row["fundamentals"] is None and not row["isEtf"]: row["fundamentals"] = pf
+            elif row["fundamentals"] and row["fundamentals"].get("psr") is None and pf and pf.get("psr") is not None:
+                row["fundamentals"]["psr"], row["fundamentals"]["psrSource"] = pf["psr"], pf.get("psrSource") or "PYKRX"
             if row["flows"] is None: row["flows"] = pl
         if row["isEtf"]:
             earnings_auto[key] = {"dates": [], "verifiedThrough": ymd(today + dt.timedelta(days=30)), "source": "auto:ETF(실적발표 없음)"}
@@ -225,10 +295,10 @@ except Exception as e:  # noqa: BLE001
     note("event-calendar-auto write", e)
 
 out = {"version": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
-       "symbols": symbols, "macro": m, "errors": errors[:50]}
+       "symbols": symbols, "macro": m, "crudeOil": oil, "errors": errors[:50]}
 os.makedirs(root, mode=0o700, exist_ok=True)
 fd, tmp = tempfile.mkstemp(dir=root, prefix=".scorecard-data.")
 with os.fdopen(fd, "w", encoding="utf8") as f: json.dump(out, f, ensure_ascii=False)
 os.replace(tmp, os.path.join(root, "scorecard-data.json"))
 summary = {k: {"bars": len(v["bars"]), "fundamentals": (v["fundamentals"] or {}).get("source"), "flows": (v["flows"] or {}).get("source"), "etf": v["isEtf"], "earnings": earnings_auto.get(k, {}).get("dates", ["미확인"])[:1]} for k, v in symbols.items()}
-print(json.dumps({"symbols": summary, "macro": m, "earningsMissing": earnings_missing, "errors": errors[:15]}, ensure_ascii=False, indent=1))
+print(json.dumps({"symbols": summary, "macro": m, "crudeOil": oil, "earningsMissing": earnings_missing, "errors": errors[:15]}, ensure_ascii=False, indent=1))
