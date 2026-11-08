@@ -1,5 +1,5 @@
 /** In-memory cache of non-secret KIS quote fields (valuation, investor flows) for the scorecard. */
-export interface KisFundamentals { per: number | null; pbr: number | null; marketCapKrw: number; at: string }
+export interface KisFundamentals { per: number | null; pbr: number | null; marketCapKrw: number; at: string; psr?: number | null }
 export interface KisFlows { foreignNetKrw: number; institutionNetKrw: number; days: number; asOf: string; at: string }
 const g = globalThis as typeof globalThis & { __kisFund?: Map<string, KisFundamentals>; __kisFlows?: Map<string, KisFlows>; __kisFlowsFail?: Map<string, number> };
 const fund = (g.__kisFund ??= new Map()), flows = (g.__kisFlows ??= new Map()), fails = (g.__kisFlowsFail ??= new Map());

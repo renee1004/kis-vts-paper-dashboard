@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import type { TradingMarket } from "@/lib/domain";
 import type { DailyBar } from "@/lib/strategy";
-import { DECISION_ENGINE_VERSION, LEGACY_DECISION_ENGINE_VERSION, type EventCalendar, type FlowsInput, type FundamentalsInput, type MacroInput } from "@/lib/scorecard";
+import { DECISION_ENGINE_VERSION, LEGACY_DECISION_ENGINE_VERSION, referenceCrudeOil, referencePsr, UNKNOWN_CRUDE_OIL, type CrudeOilReference, type EventCalendar, type FlowsInput, type FundamentalsInput, type MacroInput, type PsrReference } from "@/lib/scorecard";
 
 const root = () => process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const num = z.number().finite().nullable();
@@ -18,27 +18,51 @@ const cacheSchema = z.object({
   })),
   macro: z.object({ vix: num, usdKrwChange20dPct: num, us10yChange20dBp: num, asOf: z.string() }).nullable().default(null),
 });
-export interface SymbolData { bars: DailyBar[]; fundamentals: FundamentalsInput | null; flows: FlowsInput | null; isEtf: boolean }
+export interface SymbolData { bars: DailyBar[]; fundamentals: FundamentalsInput | null; flows: FlowsInput | null; isEtf: boolean; psr: PsrReference }
 const MAX_AGE_MS = 4 * 86400_000;
-let cached: { mtime: number; data: z.infer<typeof cacheSchema> | null } | null = null;
+let cached: { mtime: number; data: z.infer<typeof cacheSchema> | null; raw: unknown } | null = null;
 function load() {
   const file = path.join(root(), "scorecard-data.json");
   let mtime: number;
   try { mtime = fs.statSync(file).mtimeMs; } catch { return null; }
-  if (cached?.mtime === mtime) return cached.data;
-  try { cached = { mtime, data: cacheSchema.parse(JSON.parse(fs.readFileSync(file, "utf8"))) }; }
-  catch { cached = { mtime, data: null }; }
-  return cached.data;
+  if (cached?.mtime === mtime) return cached;
+  try {
+    const raw: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    cached = { mtime, data: cacheSchema.parse(raw), raw };
+  } catch { cached = { mtime, data: null, raw: null }; }
+  return cached;
 }
-/** Missing, stale (>4 days) or invalid cache => every derived view is UNKNOWN, never 0. */
-export function scorecardData(market: TradingMarket, stockCode: string, now = Date.now()): { symbol: SymbolData | null; macro: MacroInput | null; generatedAt: string | null } {
-  const data = load();
-  if (!data) return { symbol: null, macro: null, generatedAt: null };
+function rawRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
+}
+function rawSymbolFundamentals(raw: unknown, key: string): unknown {
+  const row = rawRecord(rawRecord(raw)?.symbols)?.[key];
+  return rawRecord(row)?.fundamentals;
+}
+/**
+ * Scoring cache is parsed with the existing schema (unknown keys stripped). PSR / crude oil
+ * are read from the raw JSON separately so a bad reference value cannot invalidate view scores.
+ */
+export function scorecardData(market: TradingMarket, stockCode: string, now = Date.now()): {
+  symbol: SymbolData | null; macro: MacroInput | null; generatedAt: string | null; crudeOil: CrudeOilReference;
+} {
+  const loaded = load();
+  const unknown = { symbol: null, macro: null, generatedAt: null as string | null, crudeOil: { ...UNKNOWN_CRUDE_OIL } };
+  if (!loaded?.data) return unknown;
+  const data = loaded.data;
   const age = now - Date.parse(data.generatedAt);
-  if (!Number.isFinite(age) || age < -60_000 || age > MAX_AGE_MS) return { symbol: null, macro: null, generatedAt: data.generatedAt };
-  const row = data.symbols[`${market}:${stockCode}`];
-  return { generatedAt: data.generatedAt, macro: data.macro,
-    symbol: row ? { bars: row.bars, fundamentals: row.fundamentals, flows: row.flows, isEtf: !!row.isEtf } : null };
+  if (!Number.isFinite(age) || age < -60_000 || age > MAX_AGE_MS) return { ...unknown, generatedAt: data.generatedAt };
+  const key = `${market}:${stockCode}`;
+  const row = data.symbols[key];
+  return {
+    generatedAt: data.generatedAt, macro: data.macro, crudeOil: referenceCrudeOil(rawRecord(loaded.raw)?.crudeOil),
+    symbol: row ? { bars: row.bars, fundamentals: row.fundamentals, flows: row.flows, isEtf: !!row.isEtf,
+      psr: referencePsr(rawSymbolFundamentals(loaded.raw, key)) } : null,
+  };
+}
+/** Market-wide WTI reference (KOSPI 선행 가설, 미검증). Stale/missing cache => unknown. */
+export function scorecardCrudeOil(now = Date.now()): CrudeOilReference {
+  return scorecardData("DOMESTIC", "_", now).crudeOil;
 }
 /** Universe file for scripts/scorecard-collect.py (codes and names only, no account data). */
 export function writeScorecardUniverse(targets: { market: TradingMarket; stockCode: string; stockName: string }[]): void {
@@ -86,7 +110,10 @@ export function decisionEngineCutover(): { version: string; cutoverAt: string; p
 export type StoredScorecard = import("@/lib/scorecard").Scorecard & {
   at: string; market: TradingMarket; stockCode: string; stockName: string; dataGeneratedAt: string | null;
   technicalDate: string | null; stopFraction: number; levels: import("@/lib/scorecard").TechnicalLevels | null;
+  /** Display-only. Never copied into decideScorecard / conclusionToOrderSide. */
+  references?: { psr: PsrReference };
 };
+export type { CrudeOilReference, PsrReference };
 const runtimeCards = globalThis as typeof globalThis & { __scorecards?: Map<string, StoredScorecard> };
 export function setScorecard(card: StoredScorecard): void {
   (runtimeCards.__scorecards ??= new Map()).set(`${card.market}:${card.stockCode}`, card);
