@@ -1,15 +1,14 @@
 /**
- * 5-perspective scorecard that decides VTS paper orders (replaces the legacy trend signal
- * as the live paper-order decision). Pure functions only: no I/O, no order placement.
- * Every conclusion still goes through rule-engine/safety (SAFE_LOCKED) gates downstream.
+ * 5-perspective scorecard for dashboard/research display only.
+ * Live VTS paper orders are decided by trend-breakout-v2 (`STRATEGY_VERSION` /
+ * `DECISION_ENGINE_VERSION` in strategy.ts). Pure functions: no I/O, no order placement.
  * Procedure reference: TradingAgents (analyst views -> bull/bear -> risk -> decision); no code reused.
  */
 import type { TradingMarket } from "./domain";
 import type { DailyBar } from "./strategy";
 import { headlineDirection } from "./news-model";
 
-export const DECISION_ENGINE_VERSION = "scorecard-5view-v3-paper-unvalidated";
-export const LEGACY_DECISION_ENGINE_VERSION = "trend-breakout-v2-capital30m-unvalidated";
+export const SCORECARD_VERSION = "scorecard-5view-v3-paper-unvalidated";
 
 export type ViewScore = 1 | 0 | -1 | "UNKNOWN";
 export type Perspective = "fundamentals" | "flows" | "technical" | "news" | "macro";
@@ -190,7 +189,7 @@ export function decideScorecard(input: ScorecardInput): Scorecard {
   const stopBase = held ? input.holding!.averagePrice : price ?? 0;
   const stopLoss = stopBase > 0 ? stopBase * (1 - input.stopFraction) : null;
   const portfolioNote = `보유 ${input.portfolio.heldNames}/${input.portfolio.maxNames}종목 · 종목비중 ${input.portfolio.nameWeight == null ? "미확인" : (input.portfolio.nameWeight * 100).toFixed(1) + "%"} (한도 ${(input.portfolio.maxNameFraction * 100).toFixed(0)}%) · 레버리지·인버스 합계 노출은 평가자산의 3~5% 한도(기본 5%) 안에서만`;
-  const base = { version: DECISION_ENGINE_VERSION, views, knownTotal, unknownCount, filters, bullCase, bearCase, portfolioNote };
+  const base = { version: SCORECARD_VERSION, views, knownTotal, unknownCount, filters, bullCase, bearCase, portfolioNote };
   const out = (conclusion: Conclusion, invalidation: string, entry: number | null = price): Scorecard =>
     ({ ...base, conclusion, entryPrice: entry, stopLoss, invalidation });
 
@@ -225,7 +224,10 @@ export function decideScorecard(input: ScorecardInput): Scorecard {
   return out("관망", "합계 점수 부족");
 }
 
-/** Conservative mapping: only clear conclusions may request a paper order. */
+/**
+ * Display/research mapping only. Live paper orders ignore this and use
+ * `livePaperOrderIntent` / `analyzeTrend` instead.
+ */
 export function conclusionToOrderSide(c: Conclusion): "BUY" | "SELL" | "HOLD" {
   if (c === "매수검토") return "BUY";
   if (c === "전량매도") return "SELL";

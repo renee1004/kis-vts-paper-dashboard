@@ -48,7 +48,7 @@ function ReferenceNotes({ psr, crudeOil }: { psr?: PsrReference; crudeOil: Crude
 
 export function ScorecardPanel() {
   const [cards, setCards] = useState<StoredScorecard[]>([]);
-  const [cutover, setCutover] = useState<{ cutoverAt: string; previousVersion: string } | null>(null);
+  const [cutover, setCutover] = useState<{ cutoverAt: string; previousVersion: string; version?: string; scorecardVersion?: string } | null>(null);
   const [crudeOil, setCrudeOil] = useState<CrudeOilReference | null>(null);
   const [selected, setSelected] = useState<string>("");
   const [chart, setChart] = useState<Chart>(null);
@@ -69,9 +69,9 @@ export function ScorecardPanel() {
   }, [selected]);
   const card = cards.find((c) => `${c.market}:${c.stockCode}` === selected);
   return <Card>
-    <CardHeader><CardTitle>5관점 점수판 (모의주문 판단)</CardTitle>
-      <CardDescription>모의(VTS) 주문 판단은 점수판 결론으로 합니다. 매수검토·전량매도만 모의주문 후보이고, 모든 주문은 기존 안전 잠금을 그대로 거칩니다.
-        {cutover && ` 교체 시점: ${new Date(cutover.cutoverAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (이전 기록은 ${cutover.previousVersion})`}</CardDescription></CardHeader>
+    <CardHeader><CardTitle>5관점 점수판 (표시·연구 전용)</CardTitle>
+      <CardDescription>모의(VTS) 주문은 추세 돌파 전략이 판단합니다. 점수판 결론(매수검토·전량매도 포함)과 PSR·WTI 참고값은 주문 방향·수량·제출 여부에 쓰지 않습니다. 모든 주문은 기존 안전 잠금을 그대로 거칩니다.
+        {cutover && ` 라이브 엔진: ${cutover.version ?? "trend-breakout-v2"} · 복원 ${new Date(cutover.cutoverAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (점수판 ${cutover.scorecardVersion ?? cutover.previousVersion}은 표시 전용)`}</CardDescription></CardHeader>
     <CardContent className="space-y-3">
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <ReferenceNotes psr={card?.references?.psr} crudeOil={crudeOil} />

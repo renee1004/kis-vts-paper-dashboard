@@ -1,7 +1,7 @@
 import "server-only";
 
-import { analyzeTrend, completedBars, type DailyBar } from "@/lib/strategy";
-import { conclusionToOrderSide, decideScorecard, DECISION_ENGINE_VERSION, eventStatus, referencePsr, scoreFlows, scoreFundamentals,
+import { analyzeTrend, completedBars, livePaperOrderIntent, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
+import { decideScorecard, eventStatus, referencePsr, scoreFlows, scoreFundamentals,
   scoreMacro, scoreNews, scoreTechnical, technicalLevels, UNKNOWN_PSR } from "@/lib/scorecard";
 import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeScorecardUniverse } from "@/lib/scorecard-data";
 import { ownedLot } from "@/lib/ownership";
@@ -90,34 +90,37 @@ async function analyzeWatchlistItem(
     signal.side === "HOLD" ? signal.reason : "Rule Engine 검증 대기";
   state.lastCycleSummary.signalsGenerated += 1;
 
-  // Live paper-order decision: 5-perspective scorecard (legacy trend signal is display/research only).
-  if (!isUs && kisFlowsDue(item.stockCode)) {
-    try { setKisFlows(item.stockCode, { ...(await client.getInvestorFlows(item.stockCode)), at: new Date().toISOString() }); }
-    catch { noteKisFlowsFailure(item.stockCode); } // falls back to Naver/pykrx cache
+  // Scorecard + reference indicators are display/research only and must not
+  // change order side, quantity, or whether a paper order is submitted.
+  try {
+    if (!isUs && kisFlowsDue(item.stockCode)) {
+      try { setKisFlows(item.stockCode, { ...(await client.getInvestorFlows(item.stockCode)), at: new Date().toISOString() }); }
+      catch { noteKisFlowsFailure(item.stockCode); } // falls back to Naver/pykrx cache
+    }
+    buildScorecard(item, price, bars);
+  } catch {
+    addLog("ERROR", "점수판 표시 갱신 실패. 모의주문은 추세 돌파 신호를 사용합니다.", "WARN");
   }
-  const card = buildScorecard(item, price, bars);
-  item.analysis = conclusionToOrderSide(card.conclusion);
-  item.blockedReason = `${card.conclusion} · ${card.filters.join(",") || "필터 통과"}`;
-  const side = item.analysis;
-  if (price && side !== "HOLD") {
+
+  const intent = livePaperOrderIntent(signal);
+  if (price && intent.side !== "HOLD") {
     const lastDate = bars.at(-1)?.date ?? "";
     const ageDays = lastDate ? (Date.now() - Date.parse(lastDate.slice(0, 4) + "-" + lastDate.slice(4, 6) + "-" + lastDate.slice(6, 8) + "T00:00:00Z")) / 86400_000 : Infinity;
-    if (ageDays > 7 || (side === "BUY" && Math.abs(price / bars.at(-1)!.close - 1) > 0.02)) {
+    if (ageDays > 7 || (intent.side === "BUY" && Math.abs(price / bars.at(-1)!.close - 1) > 0.02)) {
       item.blockedReason = "STALE_CANDLES_OR_ENTRY_GAP"; return;
     }
-    const signalDate = card.technicalDate ?? lastDate;
-    const signalId = [DECISION_ENGINE_VERSION, item.market, item.stockCode, signalDate, side].join(":");
+    const signalId = [STRATEGY_VERSION, item.market, item.stockCode, lastDate, intent.side].join(":");
     const order = await executeVtsMockOrder(client, {
       market: item.market,
       stockCode: item.stockCode,
       stockName: item.stockName,
-      side,
-      confidence: 100, // only clear scorecard conclusions reach here; safety gates still apply
+      side: intent.side,
+      confidence: intent.confidence,
       price,
       signalId,
-      signalDate,
-      stopFraction: card.stopFraction,
-      trendMa: signal.trendMa,
+      signalDate: intent.signalDate ?? undefined,
+      stopFraction: intent.stopFraction,
+      trendMa: intent.trendMa,
     });
     item.blockedReason = order?.blockedReason ?? "";
   }
@@ -230,7 +233,7 @@ export async function runAgentCycle(): Promise<void> {
     state.lastCycleAt = new Date().toISOString();
     const valuation = strategyValuation();
     if (valuation.valid) state.performanceHistory = recordPerformance(state.performanceHistory, {
-      at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: DECISION_ENGINE_VERSION,
+      at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: STRATEGY_VERSION,
     });
     saveState();
   }

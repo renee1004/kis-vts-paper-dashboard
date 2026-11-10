@@ -1,8 +1,9 @@
-# 5관점 점수판 (모의주문 판단 엔진 v3)
+# 5관점 점수판 (표시·연구 전용)
 
-- 버전: `scorecard-5view-v3-paper-unvalidated` (`src/lib/scorecard.ts` `DECISION_ENGINE_VERSION`)
-- 이전 엔진: `trend-breakout-v2-capital30m-unvalidated` (`STRATEGY_VERSION`, 이제 백테스트·A/B 그림자 비교 기준선 전용)
-- 범위: **모의투자(VTS) 주문 판단만**. 실전 주문·자동매매 켜기 없음. 모든 주문은 기존 `rule-engine` → `safety`(SAFE_LOCKED·킬스위치·장 시간·잔고 신선도·한도) → `submitOrder` 최종 게이트를 그대로 거칩니다. 손절·익절 `enforceRiskExits`도 그대로입니다.
+- 점수판 버전: `scorecard-5view-v3-paper-unvalidated` (`src/lib/scorecard.ts` `SCORECARD_VERSION`)
+- **라이브 모의주문 엔진 (복원):** `trend-breakout-v2-capital30m-unvalidated` (`src/lib/strategy.ts` `STRATEGY_VERSION` / `DECISION_ENGINE_VERSION`)
+- 2026-11-06에 라이브 판단을 점수판으로 바꿨다가, 점수판 버전 모의주문이 나오지 않아 추세 돌파 v2로 되돌렸습니다. 점수판 패널과 PSR·WTI 참고값은 **표시·연구 전용**이며 주문 방향·수량·제출 여부에 쓰지 않습니다.
+- 라이브 주문 범위: **모의투자(VTS)만**. 실전 주문·자동매매 켜기 없음. 모든 주문은 기존 `rule-engine` → `safety`(SAFE_LOCKED·킬스위치·장 시간·잔고 신선도·한도) → `submitOrder` 최종 게이트를 그대로 거칩니다. 손절·익절 `enforceRiskExits`와 에이전트 소유분만 매도하는 규칙도 그대로입니다.
 - 검증 상태: 미검증 가설. 수익을 보장하지 않습니다.
 
 ## 절차 (TradingAgents의 절차만 참고, 코드 미사용)
@@ -27,12 +28,13 @@
    - 보호선은 **완료 종가** 기준: 종가 ≤ 평균단가×(1−손절폭) → 전량매도
 5. 결론: 매수검토, 조건부매수, 보유, 추가매수, 일부매도, 전량매도, 관망, 보류 + 진입가·손절선·틀렸다는 신호.
 
-## 결론 → 모의주문 매핑 (보수적)
-| 결론 | 모의주문 |
+## 결론 → 화면 매핑 (주문에 사용하지 않음)
+라이브 모의주문 방향은 `analyzeTrend` / `livePaperOrderIntent`입니다. 아래 표는 점수판 화면·연구용 매핑(`conclusionToOrderSide`)이며, 에이전트는 읽지 않습니다.
+| 결론 | 화면 참고 |
 |---|---|
-| 매수검토 | BUY 후보 (안전 게이트 통과 시에만) |
-| 전량매도 | SELL 후보 (에이전트가 산 수량만) |
-| 조건부매수·추가매수·일부매도·보유·관망·보류 | 주문 없음 (추가매수는 기존 무피라미딩 규칙, 일부매도는 부분청산 미지원) |
+| 매수검토 | BUY로 표시될 수 있음 (주문 아님) |
+| 전량매도 | SELL로 표시될 수 있음 (주문 아님) |
+| 조건부매수·추가매수·일부매도·보유·관망·보류 | HOLD 표시 |
 
 ## 데이터 수집
 ```bash
@@ -42,13 +44,14 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 ```
 결과: `.data/scorecard-data.json`. 4일 넘게 오래되면 전부 미확인 처리. 미국 종목은 pykrx 대상이 아니라 펀더멘털·수급이 미확인 → 항상 보류(의도된 보수 동작). ETF도 PER·수급이 없으면 보류. 하루 1회(장 마감 후) 실행 권장.
 
-## A/B/C 비교 원장과 교체 시점
-- 첫 점수판 사이클이 `.data/decision-engine-cutover.json`에 `{version, cutoverAt, previousVersion}`을 **한 번만** 기록합니다(덮어쓰지 않음).
-- 교체 이후 모의주문의 `strategyVersion`과 성과 기록(`performanceHistory`)은 `scorecard-5view-v3-...`로 저장되어 이전 v2 기록과 자동 분리됩니다 (7일 성과는 같은 버전끼리만 계산).
-- 시장지수 필터 A/B/C 그림자 비교(`market-comparison-v1`)는 계속 v2 추세 신호 기준선으로 돌아가며, 실제 주문과 섞이지 않습니다. `/api/strategy-comparison` 응답의 `liveDecisionEngine`에 교체 시점이 표시됩니다. 교체 시점 이전/이후 실제 모의주문 비교는 `cutoverAt` 기준으로 나눠서 보세요.
+## A/B/C 비교 원장과 라이브 엔진 복원
+- 2026-11-06 점수판 교체 기록은 `.data/decision-engine-cutover.json`의 `scorecardCutoverAt`에 보존합니다.
+- 라이브 엔진을 추세 돌파 v2로 되돌린 뒤 첫 사이클이 `{version: trend-breakout-v2-..., cutoverAt, restoredAt, previousVersion: scorecard-5view-v3-..., scorecardCutoverAt}`을 기록합니다. 같은 라이브 버전에서는 `cutoverAt`/`restoredAt`을 다시 쓰지 않습니다.
+- 복원 이후 모의주문의 `strategyVersion`과 성과 기록(`performanceHistory`)은 다시 `trend-breakout-v2-capital30m-unvalidated`입니다. 7일 성과는 같은 버전끼리만 계산합니다. 기존 체결·포지션·에이전트 소유 수량은 다시 쓰지 않습니다.
+- 시장지수 필터 A/B/C 그림자 비교(`market-comparison-v1`)는 계속 v2 추세 신호 기준선으로 돌아가며, 실제 주문과 섞이지 않습니다. `/api/strategy-comparison` 응답의 `liveDecisionEngine`에 복원 기록이 표시됩니다.
 
 ## 화면
-`ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지). 패널 상단에 **참고 (미검증)** 로 PSR과 원유(WTI) 추세를 보여 주며, 이 값은 점수·결론·필터·모의주문에 쓰지 않습니다.
+`ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지). 패널은 **표시·연구 전용**입니다. 상단에 **참고 (미검증)** 로 PSR과 원유(WTI) 추세를 보여 주며, 이 값과 점수판 결론은 라이브 모의주문에 쓰지 않습니다.
 
 ## 참고 지표 (점수·주문 미사용)
 표시 전용입니다. `scoreFundamentals` / `scoreMacro` / `decideScorecard` / `conclusionToOrderSide`는 읽지 않습니다. 값이 없으면 출처는 `unknown`.
