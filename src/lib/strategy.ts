@@ -2,6 +2,8 @@
 import type { TradingMarket } from "@/lib/domain";
 import { marketRiskLimits } from "@/lib/trading-limits";
 export const STRATEGY_VERSION = "trend-breakout-v2-capital30m-unvalidated";
+/** Live VTS paper-order engine. Restored from the display-only 5-view scorecard. */
+export const DECISION_ENGINE_VERSION = STRATEGY_VERSION;
 export interface DailyBar { date: string; close: number; low?: number }
 export interface StrategySignal {
   side: "BUY" | "SELL" | "HOLD";
@@ -9,6 +11,30 @@ export interface StrategySignal {
   reason: string; signalDate: string | null; stopFraction: number;
   /** 20-day mean of completed closes (the trend line the SELL rule compares against). */
   trendMa?: number;
+}
+/**
+ * Live paper-order fields. Scorecard conclusions (매수검토/전량매도/일부매도/…) and
+ * reference indicators (PSR, WTI) are display-only and must not change side,
+ * confidence, stop, or whether an order is eligible.
+ */
+export function livePaperOrderIntent(
+  signal: StrategySignal,
+  _scorecardDisplay?: {
+    conclusion?: string;
+    references?: unknown;
+    psr?: unknown;
+    crudeOil?: unknown;
+    wti?: unknown;
+  } | null,
+): Pick<StrategySignal, "side" | "confidence" | "stopFraction" | "signalDate" | "trendMa"> {
+  void _scorecardDisplay;
+  return {
+    side: signal.side,
+    confidence: signal.confidence,
+    stopFraction: signal.stopFraction,
+    signalDate: signal.signalDate,
+    trendMa: signal.trendMa,
+  };
 }
 
 export function completedBars(bars: DailyBar[], marketDate: string): DailyBar[] {

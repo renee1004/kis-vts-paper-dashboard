@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { TradingMarket } from "@/lib/domain";
-import type { DailyBar } from "@/lib/strategy";
-import { DECISION_ENGINE_VERSION, LEGACY_DECISION_ENGINE_VERSION, referenceCrudeOil, referencePsr, UNKNOWN_CRUDE_OIL, type CrudeOilReference, type EventCalendar, type FlowsInput, type FundamentalsInput, type MacroInput, type PsrReference } from "@/lib/scorecard";
+import { DECISION_ENGINE_VERSION, type DailyBar } from "@/lib/strategy";
+import { SCORECARD_VERSION, referenceCrudeOil, referencePsr, UNKNOWN_CRUDE_OIL, type CrudeOilReference, type EventCalendar, type FlowsInput, type FundamentalsInput, type MacroInput, type PsrReference } from "@/lib/scorecard";
 
 const root = () => process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const num = z.number().finite().nullable();
@@ -86,31 +86,54 @@ export function eventCalendar(): EventCalendar | null {
     return { ...base, earnings: { ...auto.earnings, ...base.earnings } };
   } catch { return base; }
 }
+export interface DecisionEngineCutover {
+  version: string;
+  cutoverAt: string;
+  previousVersion: string;
+  restoredAt?: string;
+  scorecardCutoverAt?: string | null;
+  scorecardVersion?: string;
+  note?: string;
+}
+function asCutover(v: unknown): DecisionEngineCutover | null {
+  if (!v || typeof v !== "object") return null;
+  const rec = v as Record<string, unknown>;
+  if (typeof rec.version !== "string" || typeof rec.cutoverAt !== "string") return null;
+  return rec as DecisionEngineCutover;
+}
 /**
- * One-time cutover marker: live VTS paper orders switch from the legacy trend signal to the
- * scorecard. Written once (never overwritten) so pre/post records can always be separated.
+ * Live-engine marker. After the 2026-11-06 scorecard cutover this records the restore
+ * back to trend-breakout-v2. Once the live version matches, cutoverAt/restoredAt are
+ * not rewritten. The original scorecard cutover timestamp is kept in scorecardCutoverAt.
  */
-export function recordDecisionEngineCutover(at = new Date().toISOString()): { version: string; cutoverAt: string; previousVersion: string } {
+export function recordDecisionEngineCutover(at = new Date().toISOString()): DecisionEngineCutover {
   const file = path.join(root(), "decision-engine-cutover.json");
+  let existing: DecisionEngineCutover | null = null;
+  try { existing = asCutover(JSON.parse(fs.readFileSync(file, "utf8"))); } catch { /* create below */ }
+  if (existing?.version === DECISION_ENGINE_VERSION && typeof existing.cutoverAt === "string") return existing;
+  const scorecardCutoverAt = existing?.version === SCORECARD_VERSION && typeof existing.cutoverAt === "string"
+    ? existing.cutoverAt
+    : (typeof existing?.scorecardCutoverAt === "string" ? existing.scorecardCutoverAt : null);
+  const marker: DecisionEngineCutover = {
+    version: DECISION_ENGINE_VERSION, cutoverAt: at, restoredAt: at, previousVersion: SCORECARD_VERSION,
+    scorecardCutoverAt, scorecardVersion: SCORECARD_VERSION,
+    note: "Live VTS paper-order decision restored to trend-breakout-v2. Scorecard remains display/research only and does not place orders. Original scorecard cutoverAt is preserved in scorecardCutoverAt.",
+  };
   try {
-    const existing = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (existing?.version === DECISION_ENGINE_VERSION && typeof existing.cutoverAt === "string") return existing;
-  } catch { /* create below */ }
-  const marker = { version: DECISION_ENGINE_VERSION, cutoverAt: at, previousVersion: LEGACY_DECISION_ENGINE_VERSION,
-    note: "Live VTS paper-order decision replaced by 5-perspective scorecard. Orders/performance before cutoverAt belong to previousVersion." };
-  try { fs.mkdirSync(root(), { recursive: true, mode: 0o700 }); fs.writeFileSync(file, JSON.stringify(marker, null, 2), { mode: 0o600, flag: "wx" }); }
-  catch { /* raced or unwritable; read path below still reports */ }
+    fs.mkdirSync(root(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, JSON.stringify(marker, null, 2), { mode: 0o600 });
+  } catch { /* unwritable; read path below still reports */ }
   return marker;
 }
-export function decisionEngineCutover(): { version: string; cutoverAt: string; previousVersion: string } | null {
-  try { const v = JSON.parse(fs.readFileSync(path.join(root(), "decision-engine-cutover.json"), "utf8")); return typeof v?.cutoverAt === "string" ? v : null; }
+export function decisionEngineCutover(): DecisionEngineCutover | null {
+  try { return asCutover(JSON.parse(fs.readFileSync(path.join(root(), "decision-engine-cutover.json"), "utf8"))); }
   catch { return null; }
 }
 
 export type StoredScorecard = import("@/lib/scorecard").Scorecard & {
   at: string; market: TradingMarket; stockCode: string; stockName: string; dataGeneratedAt: string | null;
   technicalDate: string | null; stopFraction: number; levels: import("@/lib/scorecard").TechnicalLevels | null;
-  /** Display-only. Never copied into decideScorecard / conclusionToOrderSide. */
+  /** Display-only. Never copied into decideScorecard or live paper-order side/qty. */
   references?: { psr: PsrReference };
 };
 export type { CrudeOilReference, PsrReference };

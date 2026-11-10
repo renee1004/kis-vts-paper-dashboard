@@ -1,6 +1,7 @@
 # KIS VTS 모의 자동매매 대시보드
 
-현재 전략은 `trend-breakout-v1-unvalidated` 모의 검증 후보입니다.
+현재 라이브 모의주문 전략은 `trend-breakout-v2-capital30m-unvalidated`입니다.
+5관점 점수판과 PSR·WTI 참고값은 화면·연구 전용이며 주문 방향·수량·제출 여부에 쓰지 않습니다.
 수익을 보장하거나 화면 점수를 승률로 해석하지 않습니다.
 이번 변경의 매매 규칙·위험 한도·원장 및 검사 방법은
 [전략 점검 문서](docs/STRATEGY-REVIEW.md)를 기준으로 확인하세요.

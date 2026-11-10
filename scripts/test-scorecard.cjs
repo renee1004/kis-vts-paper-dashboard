@@ -124,16 +124,21 @@ check('SAFE_LOCKED still blocks a 매수검토 BUY at the rule engine', () => {
   console.log('  gate reason:', def.reason, '/', locked.reason);
   assert.equal(evaluatePaperOrder({ market: 'DOMESTIC', side: 'HOLD', confidence: 100, price: 1 }).reason, 'HOLD_SIGNAL');
 });
-check('live decision engine version differs from legacy so ledgers never mix', () => {
-  assert.notEqual(sc.DECISION_ENGINE_VERSION, sc.LEGACY_DECISION_ENGINE_VERSION);
-  assert.equal(load('src/lib/strategy.ts').STRATEGY_VERSION, sc.LEGACY_DECISION_ENGINE_VERSION);
+check('scorecard version is display-only and distinct from the restored live trend-breakout engine', () => {
+  const strategy = load('src/lib/strategy.ts');
+  assert.equal(sc.SCORECARD_VERSION, 'scorecard-5view-v3-paper-unvalidated');
+  assert.equal(strategy.STRATEGY_VERSION, 'trend-breakout-v2-capital30m-unvalidated');
+  assert.equal(strategy.DECISION_ENGINE_VERSION, strategy.STRATEGY_VERSION);
+  assert.notEqual(sc.SCORECARD_VERSION, strategy.DECISION_ENGINE_VERSION);
 });
-check('cutover marker written once and never overwritten', () => {
+check('restore marker is written once for the live trend-breakout version', () => {
   const data = load('src/lib/scorecard-data.ts');
-  const first = data.recordDecisionEngineCutover('2026-11-06T07:00:00.000Z');
+  const first = data.recordDecisionEngineCutover('2026-11-10T00:00:00.000Z');
   const second = data.recordDecisionEngineCutover('2027-01-01T00:00:00.000Z');
+  assert.equal(first.version, 'trend-breakout-v2-capital30m-unvalidated');
+  assert.equal(first.previousVersion, 'scorecard-5view-v3-paper-unvalidated');
   assert.equal(second.cutoverAt, first.cutoverAt);
-  assert.equal(data.decisionEngineCutover().cutoverAt, '2026-11-06T07:00:00.000Z');
+  assert.equal(data.decisionEngineCutover().cutoverAt, '2026-11-10T00:00:00.000Z');
   assert.equal(data.scorecardData('DOMESTIC', '005930').symbol, null); // no cache => unknown views
 });
 check('levered/inverse cap: under cap allowed, over cap blocked, band 3-5%', () => {

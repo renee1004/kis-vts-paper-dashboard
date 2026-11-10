@@ -53,7 +53,7 @@ check('PSR and crude-oil fields do not change view scores, conclusions, filters,
   assert.deepEqual(clean, dirty);
   assert.equal(clean.conclusion, '매수검토');
   assert.equal(clean.orderSide, 'BUY');
-  assert.equal(sc.DECISION_ENGINE_VERSION, 'scorecard-5view-v3-paper-unvalidated');
+  assert.equal(sc.SCORECARD_VERSION, 'scorecard-5view-v3-paper-unvalidated');
 });
 
 check('scoringFundamentals / scoringMacro drop reference fields', () => {
@@ -150,7 +150,8 @@ check('decideScorecard / score views / vts-execution / agent order path ignore P
   const macroFn = scoreSrc.split('export function scoreMacro')[1].split('export type EventStatus')[0];
   assert.equal(/psr|crude|oil|wti|CL=F/i.test(macroFn), false);
   const agent = fs.readFileSync(path.join(root, 'src/lib/agent.ts'), 'utf8');
-  assert.ok(agent.includes('conclusionToOrderSide(card.conclusion)'));
+  assert.equal(agent.includes('conclusionToOrderSide'), false);
+  assert.ok(agent.includes('livePaperOrderIntent(signal)'));
   const build = agent.split('function buildScorecard')[1].split('export async function runAgentCycle')[0];
   const beforeDecide = build.split('const card = decideScorecard')[0];
   const afterDecide = build.split('const card = decideScorecard')[1];

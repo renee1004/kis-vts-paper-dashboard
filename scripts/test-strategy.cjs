@@ -22,7 +22,7 @@ delete global.__vtsPaperState;
 let checks = 0;
 const check = (name, run) => { run(); checks++; console.log('PASS', name); };
 const load = createLoader();
-const { completedBars, analyzeTrend, exitDecision, sizeForRisk } = load('src/lib/strategy.ts');
+const { completedBars, analyzeTrend, exitDecision, sizeForRisk, livePaperOrderIntent, STRATEGY_VERSION, DECISION_ENGINE_VERSION } = load('src/lib/strategy.ts');
 const { ownedLot, sellableQuantity } = load('src/lib/ownership.ts');
 const { DEFAULT_SAFETY_SETTINGS, buyNotionalKrw } = load('src/lib/domain.ts');
 const store = load('src/lib/store.ts');
@@ -36,6 +36,23 @@ check('insufficient history does not trade', () => assert.equal(analyzeTrend(bar
 check('rising breakout qualifies; score is deterministic conditions', () => assert.equal(analyzeTrend(bars).side, 'BUY'));
 check('overextended jump does not qualify', () => assert.notEqual(analyzeTrend([...bars.slice(0,-1),{...bars.at(-1),close:300}]).side, 'BUY'));
 check('downtrend produces exit', () => assert.equal(analyzeTrend(bars.map((b,i)=>({...b,close:200-i}))).side, 'SELL'));
+check('live paper-order side comes from trend-breakout and ignores scorecard conclusions/references', () => {
+  assert.equal(STRATEGY_VERSION, 'trend-breakout-v2-capital30m-unvalidated');
+  assert.equal(DECISION_ENGINE_VERSION, STRATEGY_VERSION);
+  const buy = analyzeTrend(bars);
+  const sell = analyzeTrend(bars.map((b,i)=>({...b,close:200-i})));
+  const hold = analyzeTrend(bars.slice(0, 64));
+  const scorecardSell = { conclusion: '전량매도', references: { psr: { psr: 0.01, source: 'NAVER' }, crudeOil: { trend: '하락', lastClose: 999 } } };
+  const scorecardBuy = { conclusion: '매수검토', psr: 99, wti: 12 };
+  assert.equal(buy.side, 'BUY');
+  assert.equal(livePaperOrderIntent(buy, scorecardSell).side, 'BUY');
+  assert.equal(livePaperOrderIntent(buy, { conclusion: '일부매도' }).side, 'BUY');
+  assert.deepEqual(livePaperOrderIntent(buy, scorecardSell), livePaperOrderIntent(buy));
+  assert.equal(sell.side, 'SELL');
+  assert.equal(livePaperOrderIntent(sell, scorecardBuy).side, 'SELL');
+  assert.equal(hold.side, 'HOLD');
+  assert.equal(livePaperOrderIntent(hold, { conclusion: '매수검토' }).side, 'HOLD');
+});
 check('partial take profit fires once', () => {
   assert.equal(exitDecision({quantity:10,averagePrice:100,currentPrice:111,stopFraction:.05,partialTaken:false}).quantity,5);
   assert.equal(exitDecision({quantity:5,averagePrice:100,currentPrice:111,stopFraction:.05,partialTaken:true}),null);
