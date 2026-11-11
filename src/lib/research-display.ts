@@ -16,6 +16,8 @@ export function dashboardTradingDayStatus(market: TradingMarket, ymd: string): "
   return sessions[ymd] ? "open" : "closed";
 }
 
+export const CALENDAR_CHECK_UNAVAILABLE = "calendar mismatch: 대조 실패 (미확인)";
+
 export function formatCalendarMismatch(row: {
   date: string; dashboard: string; calendar: string; reference: string;
 }): string {
@@ -85,15 +87,18 @@ function ageOk(generatedAt: string, now: number): boolean {
 export interface CalendarCrosscheckView {
   generatedAt: string | null;
   stale: boolean;
+  unavailable: boolean;
   messages: string[];
   mismatches: z.infer<typeof mismatchSchema>[];
   window: { from: string; through: string } | null;
   xcalsVersion: string | null;
+  errors: string[];
 }
 
 export function calendarCrosscheckView(now = Date.now()): CalendarCrosscheckView {
   const empty: CalendarCrosscheckView = {
-    generatedAt: null, stale: false, messages: [], mismatches: [], window: null, xcalsVersion: null,
+    generatedAt: null, stale: false, unavailable: false, messages: [], mismatches: [],
+    window: null, xcalsVersion: null, errors: [],
   };
   try {
     const parsed = calendarSchema.parse(readJson("calendar-crosscheck.json"));
@@ -101,10 +106,15 @@ export function calendarCrosscheckView(now = Date.now()): CalendarCrosscheckView
       return { ...empty, generatedAt: parsed.generatedAt, stale: true };
     }
     const mismatches = parsed.mismatches;
+    const errors = parsed.errors ?? [];
+    const unavailable = errors.length > 0;
     return {
-      generatedAt: parsed.generatedAt, stale: false, mismatches, window: parsed.window ?? null,
-      xcalsVersion: parsed.xcalsVersion ?? null,
-      messages: mismatches.map((row) => formatCalendarMismatch(row)),
+      generatedAt: parsed.generatedAt, stale: false, unavailable, mismatches, errors,
+      window: parsed.window ?? null, xcalsVersion: parsed.xcalsVersion ?? null,
+      messages: [
+        ...(unavailable ? [CALENDAR_CHECK_UNAVAILABLE] : []),
+        ...mismatches.map((row) => formatCalendarMismatch(row)),
+      ],
     };
   } catch {
     return empty;

@@ -77,6 +77,15 @@ check('calendar-crosscheck JSON is reformatted and stale files become 미확인'
   const stale = research.calendarCrosscheckView();
   assert.equal(stale.stale, true);
   assert.deepEqual(stale.messages, []);
+  fs.writeFileSync(path.join(testDir, 'calendar-crosscheck.json'), JSON.stringify({
+    version: 1, generatedAt: new Date().toISOString(), mismatches: [],
+    errors: ['import exchange_calendars: ModuleNotFoundError: No module named \'exchange_calendars\''],
+  }));
+  const failed = research.calendarCrosscheckView();
+  assert.equal(failed.stale, false);
+  assert.equal(failed.unavailable, true);
+  assert.equal(failed.messages[0], research.CALENDAR_CHECK_UNAVAILABLE);
+  assert.match(failed.messages[0], /대조 실패 \(미확인\)/);
 });
 
 check('risk-contribution JSON renders 미확인 for missing vol/RC and empty files', () => {
@@ -103,16 +112,41 @@ check('risk-contribution JSON renders 미확인 for missing vol/RC and empty fil
 
 check('research holdings snapshot stores evaluation only and uses the app FX rate', () => {
   data.writeResearchHoldings({
-    domestic: [{ stockCode: '005930', stockName: '삼성전자', evaluation: 100000 }],
+    domestic: [{ stockCode: '005930', stockName: '삼성전자', evaluation: 100000, lastSyncedAt: '2026-11-11T01:00:00.000Z' }],
     overseas: [{ stockCode: 'NVDA', stockName: 'NVIDIA', evaluation: 10, currency: 'USD' }],
-    usdKrw: USD_KRW_SAFETY_RATE,
+    usdKrw: USD_KRW_SAFETY_RATE, domesticSynced: true, overseasSynced: true,
   });
   const snapshot = JSON.parse(fs.readFileSync(path.join(testDir, 'research-holdings.json'), 'utf8'));
   assert.equal(snapshot.usdKrw, 1500);
   assert.equal(snapshot.fxSource, 'FIXED_1500_NOT_ACTUAL_FX');
   assert.equal(snapshot.holdings[1].evaluationKrw, 15000);
+  assert.deepEqual(snapshot.syncedMarkets, ['DOMESTIC', 'US_NASDAQ']);
   assert.equal(JSON.stringify(snapshot).includes('account'), false);
   assert.equal(JSON.stringify(snapshot).includes('KIS_'), false);
+});
+
+check('failed balance sync does not stamp retained holdings as fresh', () => {
+  const file = path.join(testDir, 'research-holdings.json');
+  assert.equal(data.writeResearchHoldings({
+    domestic: [{ stockCode: '005930', stockName: '삼성전자', evaluation: 1 }],
+    overseas: [{ stockCode: 'NVDA', stockName: 'NVIDIA', evaluation: 1 }],
+    usdKrw: USD_KRW_SAFETY_RATE, domesticSynced: false, overseasSynced: false,
+  }), false);
+  const skippedAt = JSON.parse(fs.readFileSync(file, 'utf8')).generatedAt;
+  assert.equal(data.writeResearchHoldings({
+    domestic: [{ stockCode: '005930', stockName: '삼성전자', evaluation: 200000 }],
+    overseas: [{ stockCode: 'NVDA', stockName: 'NVIDIA', evaluation: 99 }],
+    usdKrw: USD_KRW_SAFETY_RATE, domesticSynced: true, overseasSynced: false,
+  }), true);
+  const partial = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.notEqual(partial.generatedAt, skippedAt);
+  assert.deepEqual(partial.syncedMarkets, ['DOMESTIC']);
+  assert.equal(partial.holdings.length, 1);
+  assert.equal(partial.holdings[0].stockCode, '005930');
+  const agent = fs.readFileSync(path.join(root, 'src/lib/agent.ts'), 'utf8');
+  const holdingsWrite = agent.split('writeResearchHoldings({')[1].split('});')[0];
+  assert.ok(holdingsWrite.includes('domesticSynced'));
+  assert.ok(holdingsWrite.includes('overseasSynced'));
 });
 
 check('order code paths do not import exchange_calendars, skfolio, or research collectors', () => {
@@ -134,6 +168,7 @@ check('order code paths do not import exchange_calendars, skfolio, or research c
   assert.equal(DEFAULT_SAFETY_SETTINGS.allowRealOverseasOrder, false);
   const panel = fs.readFileSync(path.join(root, 'src/components/scorecard-panel.tsx'), 'utf8');
   assert.ok(panel.includes('달력 불일치 (표시·연구 전용, 주문 게이트 아님)'));
+  assert.ok(panel.includes('달력 대조 실패 (미확인)'));
   const riskPanel = fs.readFileSync(path.join(root, 'src/components/risk-contribution-panel.tsx'), 'utf8');
   assert.ok(riskPanel.includes('표시·연구 전용'));
   assert.ok(riskPanel.includes('미확인'));

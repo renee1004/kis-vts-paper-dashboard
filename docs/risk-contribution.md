@@ -4,7 +4,7 @@
 **주문 방향·수량·제출 여부·손절·장 시간 게이트에 쓰지 않습니다.**
 
 - 계산: `skfolio` (BSD-3-Clause) `Portfolio.contribution(RiskMeasure.VARIANCE)`. skfolio가 없으면 같은 분산 기여 공식을 로컬에서 계산하고 `riskSource`는 `python-covariance`가 됩니다.
-- 입력: 앱이 기록한 `.data/research-holdings.json` (평가금액만, 계좌번호 없음)와 수집기가 만든 약 1년 일봉
+- 입력: 앱이 기록한 `.data/research-holdings.json` (평가금액만, 계좌번호 없음)와 수집기가 만든 약 1년 일봉. 국내·해외 잔고 동기화가 모두 실패하면 이 파일을 새로 쓰지 않아, 이전 보유를 새 `generatedAt`으로 위장하지 않는다. 한쪽만 성공하면 그 시장만 기록한다.
 - 환율: 앱과 같은 `USD_KRW_SAFETY_RATE` 1,500원 가정 (`FIXED_1500_NOT_ACTUAL_FX`)
 - 출력: `.data/risk-contribution.json` (git 제외)
 - 화면: `RiskContributionPanel`, 점수판 옆. 값 없음·오래된 파일·일봉 부족은 **미확인**

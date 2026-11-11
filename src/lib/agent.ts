@@ -186,10 +186,13 @@ export async function runAgentCycle(): Promise<void> {
       );
     }
 
+    let domesticSynced = false;
+    let overseasSynced = false;
     try {
       const balance = await client.getBalance();
       state.positions = balance.positions;
       setBalanceSnapshot(toBalanceSnapshot(balance));
+      domesticSynced = true;
     } catch {
       addLog(
         "KIS_DIAGNOSTIC",
@@ -202,6 +205,7 @@ export async function runAgentCycle(): Promise<void> {
       const overseasBalance = await client.getOverseasBalance();
       state.overseasPositions = overseasBalance.positions;
       setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
+      overseasSynced = true;
     } catch {
       addLog(
         "KIS_DIAGNOSTIC",
@@ -214,6 +218,8 @@ export async function runAgentCycle(): Promise<void> {
       domestic: state.positions,
       overseas: state.overseasPositions,
       usdKrw: USD_KRW_SAFETY_RATE,
+      domesticSynced,
+      overseasSynced,
     });
 
     try {

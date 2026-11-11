@@ -82,14 +82,18 @@ def atomic_write(path: Path, payload: dict) -> None:
 def compare(calendar: dict, as_of: dt.date, xcals_cals: dict) -> dict:
     start, end = as_of - dt.timedelta(days=LOOKBACK_DAYS), as_of + dt.timedelta(days=LOOKAHEAD_DAYS)
     mismatches, errors = [], []
+    for _market, code in MARKETS:
+        if xcals_cals.get(code) is None:
+            errors.append(f"{code} reference calendar unavailable")
     day = start
     while day <= end:
         ymd, iso = ymd_of(day), day.isoformat()
         for market, code in MARKETS:
+            if xcals_cals.get(code) is None:
+                continue
             dash = dashboard_status(calendar, market, ymd)
-            ref = xcals_status(xcals_cals.get(code), day) if xcals_cals.get(code) is not None else None
+            ref = xcals_status(xcals_cals.get(code), day)
             if ref is None:
-                errors.append(f"{code} {iso}: reference calendar unavailable")
                 continue
             if dash != ref:
                 row = {
