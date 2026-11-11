@@ -71,6 +71,31 @@ export function writeScorecardUniverse(targets: { market: TradingMarket; stockCo
     fs.writeFileSync(path.join(root(), "scorecard-universe.json"), JSON.stringify(targets.map(({ market, stockCode, stockName }) => ({ market, stockCode, stockName }))), { mode: 0o600 });
   } catch { /* collector falls back to CLI args */ }
 }
+
+/** Holdings snapshot for research risk-contribution (evaluation only; no account numbers). */
+export function writeResearchHoldings(input: {
+  domestic: Array<{ stockCode: string; stockName: string; evaluation: number; currency?: string }>;
+  overseas: Array<{ stockCode: string; stockName: string; evaluation: number; currency?: string }>;
+  usdKrw: number;
+}): void {
+  try {
+    const holdings = [
+      ...input.domestic.map((row) => ({
+        market: "DOMESTIC" as const, stockCode: row.stockCode, stockName: row.stockName,
+        evaluation: row.evaluation, currency: "KRW" as const, evaluationKrw: row.evaluation,
+      })),
+      ...input.overseas.map((row) => ({
+        market: "US_NASDAQ" as const, stockCode: row.stockCode, stockName: row.stockName,
+        evaluation: row.evaluation, currency: "USD" as const, evaluationKrw: row.evaluation * input.usdKrw,
+      })),
+    ].filter((row) => Number.isFinite(row.evaluationKrw) && row.evaluationKrw > 0 && /^[A-Z0-9.]{1,20}$/i.test(row.stockCode));
+    fs.mkdirSync(root(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(root(), "research-holdings.json"), JSON.stringify({
+      version: 1, generatedAt: new Date().toISOString(), usdKrw: input.usdKrw,
+      fxSource: "FIXED_1500_NOT_ACTUAL_FX", holdings,
+    }), { mode: 0o600 });
+  } catch { /* collector shows 미확인 */ }
+}
 const calendarSchema = z.object({
   fomc: z.object({ verifiedFrom: z.string(), verifiedThrough: z.string(), blackout: z.object({ DOMESTIC: z.array(z.string()), US_NASDAQ: z.array(z.string()) }) }),
   earnings: z.record(z.string(), z.object({ verifiedThrough: z.string(), dates: z.array(z.string()), source: z.string().optional() })),

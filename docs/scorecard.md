@@ -38,11 +38,13 @@
 
 ## 데이터 수집
 ```bash
-python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykrx
+python3 -m venv .venv-data && .venv-data/bin/pip install -r scripts/requirements-data.txt
 .venv-data/bin/python scripts/scorecard-collect.py            # .data/scorecard-universe.json(에이전트가 기록) 사용
 .venv-data/bin/python scripts/scorecard-collect.py DOMESTIC:005930 US_NASDAQ:AAPL
+.venv-data/bin/python scripts/calendar-crosscheck.py --self-check
+.venv-data/bin/python scripts/risk-contribution.py --self-check
 ```
-결과: `.data/scorecard-data.json`. 4일 넘게 오래되면 전부 미확인 처리. 미국 종목은 pykrx 대상이 아니라 펀더멘털·수급이 미확인 → 항상 보류(의도된 보수 동작). ETF도 PER·수급이 없으면 보류. 하루 1회(장 마감 후) 실행 권장.
+결과: `.data/scorecard-data.json`. 같은 실행에서 달력 교차검증(`.data/calendar-crosscheck.json`)과 집중도·위험기여(`.data/risk-contribution.json`)도 기록한다. 둘 다 **표시·연구 전용**이며 주문 게이트에 연결하지 않는다. 4일 넘게 오래되면 전부 미확인 처리. 미국 종목은 pykrx 대상이 아니라 펀더멘털·수급이 미확인 → 항상 보류(의도된 보수 동작). ETF도 PER·수급이 없으면 보류. 하루 1회(장 마감 후) 실행 권장. 패키지: `finance-datareader`, `pykrx`, `yfinance`, `exchange_calendars==4.13.2`(Apache-2.0), `skfolio`(BSD-3-Clause).
 
 ## A/B/C 비교 원장과 라이브 엔진 복원
 - 2026-11-06 점수판 교체 기록은 `.data/decision-engine-cutover.json`의 `scorecardCutoverAt`에 보존합니다.
@@ -51,7 +53,9 @@ python3 -m venv .venv-data && .venv-data/bin/pip install finance-datareader pykr
 - 시장지수 필터 A/B/C 그림자 비교(`market-comparison-v1`)는 계속 v2 추세 신호 기준선으로 돌아가며, 실제 주문과 섞이지 않습니다. `/api/strategy-comparison` 응답의 `liveDecisionEngine`에 복원 기록이 표시됩니다.
 
 ## 화면
-`ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지). 패널은 **표시·연구 전용**입니다. 상단에 **참고 (미검증)** 로 PSR과 원유(WTI) 추세를 보여 주며, 이 값과 점수판 결론은 라이브 모의주문에 쓰지 않습니다.
+`ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지). 패널은 **표시·연구 전용**입니다. 상단에 **참고 (미검증)** 로 PSR과 원유(WTI) 추세를 보여 주며, 달력 교차검증 불일치가 있으면 `calendar mismatch: …` 경고를 표시합니다. 옆의 `RiskContributionPanel`은 보유 비중·변동성·위험기여(표시·연구 전용)입니다. 이 값과 점수판 결론은 라이브 모의주문에 쓰지 않습니다.
+
+자세한 달력 대조는 [거래일 달력](market-calendar.md), 위험기여는 [집중도·위험기여](risk-contribution.md)를 보세요.
 
 ## 참고 지표 (점수·주문 미사용)
 표시 전용입니다. `scoreFundamentals` / `scoreMacro` / `decideScorecard` / `conclusionToOrderSide`는 읽지 않습니다. 값이 없으면 출처는 `unknown`.

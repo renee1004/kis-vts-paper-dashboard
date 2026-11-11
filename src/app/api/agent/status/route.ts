@@ -13,6 +13,7 @@ import { effectiveStops, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-e
 import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits";
 import { sevenDayPerformance } from "@/lib/performance-history";
 import { MARKET_CALENDAR_INFO, marketSession } from "@/lib/market-calendar";
+import { calendarCrosscheckView } from "@/lib/research-display";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export async function GET() {
       lastCycleSummary: state.lastCycleSummary,
       runtimeDecision: {
         marketCalendar: { ...MARKET_CALENDAR_INFO, domestic: marketSession("DOMESTIC"), overseas: marketSession("US_NASDAQ") },
+        calendarMismatches: calendarCrosscheckView().messages,
         canRunAnalysisNow: kis.configured,
         canPlaceDomesticOrderNow: domesticDecision.allowed,
         canPlaceOverseasOrderNow: overseasDecision.allowed,

@@ -6,6 +6,11 @@ const {isDomesticRegularMarketOpen,isUsRegularMarketOpen,usRegularHoursDescripti
 let passed=0;
 function check(name,fn){fn();passed++;console.log('PASS',name);}
 check('Hangul Day rejects the historical repeated-order session',()=>assert.equal(isDomesticRegularMarketOpen(new Date('2026-10-09T01:00:00Z')),false));
+check('2026-11-09 Monday is a regular KRX session; isOpen follows 09:00-15:30 KST',()=>{
+ assert.equal(isDomesticRegularMarketOpen(new Date('2026-11-09T01:00:00Z')),true);
+ assert.equal(isDomesticRegularMarketOpen(new Date('2026-11-09T07:40:00Z')),false);
+ assert.equal(marketSession('DOMESTIC',new Date('2026-11-09T01:00:00Z')).known,true);
+});
 check('KRX closures missing from pinned upstream are corrected',()=>{
  for(const date of ['06-03','07-17']) assert.equal(isDomesticRegularMarketOpen(new Date(`2026-${date}T01:00:00Z`)),false);
  assert.equal(isDomesticRegularMarketOpen(new Date('2026-01-02T00:30:00Z')),false);

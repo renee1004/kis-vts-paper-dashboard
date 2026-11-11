@@ -14,6 +14,8 @@ PSR and crudeOil are stored for display only; the TS scoring schema strips them 
 
 Usage: .venv-data/bin/python scripts/scorecard-collect.py [DOMESTIC:005930 US_NASDAQ:AAPL ...]
 Without args, reads $DATA_DIR/scorecard-universe.json written by the dashboard agent.
+Also runs display-only sidecars: calendar-crosscheck.py (exchange_calendars) and
+risk-contribution.py (skfolio). Those never place orders and never read .env.
 """
 import datetime as dt, json, os, sys, tempfile, traceback
 
@@ -300,5 +302,24 @@ os.makedirs(root, mode=0o700, exist_ok=True)
 fd, tmp = tempfile.mkstemp(dir=root, prefix=".scorecard-data.")
 with os.fdopen(fd, "w", encoding="utf8") as f: json.dump(out, f, ensure_ascii=False)
 os.replace(tmp, os.path.join(root, "scorecard-data.json"))
+
+def run_sidecar(filename):
+    """Display/research sidecars (calendar cross-check, risk contribution). Never place orders."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    spec = importlib.util.spec_from_file_location(filename.replace(".py", "").replace("-", "_"), path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.main() if hasattr(mod, "main") else None
+
+sidecars = {}
+for name in ("calendar-crosscheck.py", "risk-contribution.py"):
+    try:
+        payload = run_sidecar(name)
+        sidecars[name] = (payload or {}).get("summary") if isinstance(payload, dict) else True
+    except Exception as e:  # noqa: BLE001
+        note(name, e); sidecars[name] = {"status": "미확인"}
+
 summary = {k: {"bars": len(v["bars"]), "fundamentals": (v["fundamentals"] or {}).get("source"), "flows": (v["flows"] or {}).get("source"), "etf": v["isEtf"], "earnings": earnings_auto.get(k, {}).get("dates", ["미확인"])[:1]} for k, v in symbols.items()}
-print(json.dumps({"symbols": summary, "macro": m, "crudeOil": oil, "earningsMissing": earnings_missing, "errors": errors[:15]}, ensure_ascii=False, indent=1))
+print(json.dumps({"symbols": summary, "macro": m, "crudeOil": oil, "earningsMissing": earnings_missing,
+                  "research": sidecars, "errors": errors[:15]}, ensure_ascii=False, indent=1))

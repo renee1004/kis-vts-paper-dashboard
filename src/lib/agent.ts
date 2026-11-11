@@ -3,7 +3,7 @@ import "server-only";
 import { analyzeTrend, completedBars, livePaperOrderIntent, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
 import { decideScorecard, eventStatus, referencePsr, scoreFlows, scoreFundamentals,
   scoreMacro, scoreNews, scoreTechnical, technicalLevels, UNKNOWN_PSR } from "@/lib/scorecard";
-import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeScorecardUniverse } from "@/lib/scorecard-data";
+import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeResearchHoldings, writeScorecardUniverse } from "@/lib/scorecard-data";
 import { ownedLot } from "@/lib/ownership";
 import { kisFlows, kisFlowsDue, kisFundamentals, noteKisFlowsFailure, setKisFlows } from "@/lib/kis-quote-cache";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
@@ -209,6 +209,12 @@ export async function runAgentCycle(): Promise<void> {
         "WARN",
       );
     }
+
+    writeResearchHoldings({
+      domestic: state.positions,
+      overseas: state.overseasPositions,
+      usdKrw: USD_KRW_SAFETY_RATE,
+    });
 
     try {
       await enforceRiskExits(client);
