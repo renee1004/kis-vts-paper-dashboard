@@ -326,21 +326,23 @@ export function stampUsFillFx<T extends UsFillFxFields>(
     order.fxRateStatus === "RECORDED" || order.fxRateStatus === "UNAVAILABLE" ? filled : 0
   );
   const delta = Math.max(0, filled - previous);
-  const hasFreshRate = usable.status === "AVAILABLE" && finitePositive(usable.rate);
+  const rate = usable.rate;
+  const hasFreshRate =
+    usable.status === "AVAILABLE" && rate != null && Number.isFinite(rate) && finitePositive(rate);
 
   if (order.fxRateStatus === "RECORDED" && finitePositive(order.fxUsdKrw)) {
     if (delta > 0 && hasFreshRate) {
       const baseQty = previous > 0 ? previous : 0;
       const qty = filled > 0 ? filled : baseQty + delta;
       if (qty > 0) {
-        applyRecordedFx(order, (order.fxUsdKrw * baseQty + usable.rate * delta) / qty, usable, at);
+        applyRecordedFx(order, (order.fxUsdKrw * baseQty + rate * delta) / qty, usable, at);
       }
     }
     return order;
   }
 
   if (hasFreshRate) {
-    return applyRecordedFx(order, usable.rate, usable, at);
+    return applyRecordedFx(order, rate, usable, at);
   }
   if (order.fxRateStatus === "UNAVAILABLE") return order;
   order.fxRateStatus = "UNAVAILABLE";

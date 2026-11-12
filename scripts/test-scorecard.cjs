@@ -175,6 +175,23 @@ check('KIS quote cache: fresh values used, flows retry throttled after failure',
   assert.equal(kc.kisFlowsDue('000660', now + 3600_000), false);
   assert.equal(kc.kisFlowsDue('000660', now + 7 * 3600_000), true);
 });
+check('malformed cutover file is ignored and record path falls back to a new marker', () => {
+  const data = load('src/lib/scorecard-data.ts');
+  fs.writeFileSync(path.join(testDir, 'decision-engine-cutover.json'), JSON.stringify({
+    version: 1, cutoverAt: true,
+  }));
+  assert.equal(data.decisionEngineCutover(), null);
+  fs.writeFileSync(path.join(testDir, 'decision-engine-cutover.json'), JSON.stringify({
+    version: 'trend-breakout-v2-capital30m-unvalidated',
+    cutoverAt: '2026-11-10T00:00:00.000Z',
+  }));
+  assert.equal(data.decisionEngineCutover(), null);
+  const restored = data.recordDecisionEngineCutover('2026-11-12T00:00:00.000Z');
+  assert.equal(restored.version, 'trend-breakout-v2-capital30m-unvalidated');
+  assert.equal(typeof restored.previousVersion, 'string');
+  assert.equal(restored.cutoverAt, '2026-11-12T00:00:00.000Z');
+  assert.equal(data.decisionEngineCutover().cutoverAt, '2026-11-12T00:00:00.000Z');
+});
 check('auto earnings from .data merge under manual repo entries', () => {
   const data = load('src/lib/scorecard-data.ts');
   fs.writeFileSync(path.join(testDir, 'event-calendar-auto.json'), JSON.stringify({ earnings: {

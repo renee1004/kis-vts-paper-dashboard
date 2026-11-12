@@ -212,6 +212,23 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.equal(order.fxRateStatus, 'RECORDED');
   });
 
+  test('AVAILABLE snapshot with a null rate stays unrecorded (미확인)', () => {
+    const order = { market: 'US_NASDAQ', filledQuantity: 1 };
+    fx.stampUsFillFx(order, {
+      rate: null, capturedAt: freshAt, source: 'DUNAMU', status: 'AVAILABLE',
+    }, { now: stampNow });
+    assert.equal(order.fxRateStatus, 'UNAVAILABLE');
+    assert.equal(order.fxUsdKrw, undefined);
+    const recorded = {
+      market: 'US_NASDAQ', filledQuantity: 2, fxUsdKrw: 1470, fxRateStatus: 'RECORDED',
+    };
+    fx.stampUsFillFx(recorded, {
+      rate: null, capturedAt: freshAt, source: 'DUNAMU', status: 'AVAILABLE',
+    }, { now: stampNow, previousFilledQuantity: 1 });
+    assert.equal(recorded.fxUsdKrw, 1470);
+    assert.equal(recorded.fxRateStatus, 'RECORDED');
+  });
+
   test('same-cycle UNAVAILABLE stamp upgrades when a fresh KIS rate arrives', () => {
     const order = { market: 'US_NASDAQ', filledQuantity: 1 };
     fx.stampUsFillFx(order, fx.unavailableUsdKrwSnapshot(freshAt), {
