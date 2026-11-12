@@ -184,7 +184,8 @@ check('live order helpers ignore DART views; real-order flags stay off', () => {
 
 check('collector/order sources: DART is a research sidecar and is not imported by the order path', () => {
   const req = fs.readFileSync(path.join(root, 'scripts/requirements-data.txt'), 'utf8');
-  assert.match(req, /opendartreader==0\.3\.3/);
+  assert.match(req, /opendartreader==0\.2\.2;\s*python_version < "3\.13"/);
+  assert.match(req, /opendartreader==0\.3\.3;\s*python_version >= "3\.13"/);
   const py = fs.readFileSync(path.join(root, 'scripts/opendart-fundamentals.py'), 'utf8');
   assert.match(py, /DART_API_KEY/);
   assert.match(py, /redact/);
