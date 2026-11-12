@@ -441,6 +441,23 @@ def fetch_symbol(dart: RateLimitedDart, code: str, name: str, today: dt.date) ->
     return row
 
 
+def opendart_client_class(imported):
+    """Constructor for both OpenDartReader import shapes.
+
+    opendartreader 0.3.3 does `sys.modules['OpenDartReader'] = dart.OpenDartReader`,
+    so `import OpenDartReader` binds the class itself and `.OpenDartReader` is missing.
+    Other layouts leave a module with an OpenDartReader attribute.
+    """
+    cls = getattr(imported, "OpenDartReader", imported)
+    if not callable(cls):
+        raise TypeError(f"OpenDartReader import is not callable ({type(imported).__name__})")
+    return cls
+
+
+def make_opendart_client(imported, key: str):
+    return opendart_client_class(imported)(key)
+
+
 def collect(targets: list[dict], today: dt.date, key: str) -> tuple[dict, list[str]]:
     errors: list[str] = []
     try:
@@ -448,7 +465,7 @@ def collect(targets: list[dict], today: dt.date, key: str) -> tuple[dict, list[s
     except Exception as exc:  # noqa: BLE001
         return {}, [redact(f"import OpenDartReader: {type(exc).__name__}: {exc}", key)]
     try:
-        client = OpenDartReader.OpenDartReader(key)
+        client = make_opendart_client(OpenDartReader, key)
     except Exception as exc:  # noqa: BLE001
         return {}, [redact(f"OpenDartReader(): {type(exc).__name__}: {exc}", key)]
     dart = RateLimitedDart(client, key, errors)
@@ -548,9 +565,45 @@ def self_check() -> int:
     mixed = result_payload(dt.date(2026, 11, 12), {"DOMESTIC:005930": {**empty_symbol("005930", None), "ok": True}},
                            ["finstate 000660: Timeout"], key)
     assert mixed["status"] == "ok"
+
+    class OpenDartReader:  # 0.3.3: import binds the class; nested .OpenDartReader is absent
+        def __init__(self, api_key):
+            self.api_key = api_key
+
+    try:
+        OpenDartReader.OpenDartReader(key)  # type: ignore[attr-defined]
+        raise AssertionError("0.3.3 class import must not expose nested OpenDartReader")
+    except AttributeError:
+        pass
+    class_client = make_opendart_client(OpenDartReader, key)
+    assert class_client.api_key == key
+    assert key not in repr(opendart_client_class(OpenDartReader))
+
+    class _ModuleShape:
+        pass
+
+    module_shape = _ModuleShape()
+    module_shape.OpenDartReader = OpenDartReader
+    module_client = make_opendart_client(module_shape, key)
+    assert isinstance(module_client, OpenDartReader)
+    assert module_client.api_key == key
+    assert opendart_client_class(module_shape) is OpenDartReader
+
+    installed_shape = None
+    try:
+        import OpenDartReader as _installed  # type: ignore
+    except Exception:  # noqa: BLE001
+        _installed = None
+    if _installed is not None:
+        real_cls = opendart_client_class(_installed)
+        assert callable(real_cls)
+        installed_shape = "class" if isinstance(_installed, type) else "module"
+
     print(json.dumps({"ok": True, "revenueYoyPct": parsed["revenueYoyPct"],
                       "estimatedNextDate": earn["estimatedNextDate"],
-                      "aprilFirst": april[0], "novFirst": nov[0]}, ensure_ascii=False, indent=1))
+                      "aprilFirst": april[0], "novFirst": nov[0],
+                      "clientShapes": ["class", "module"],
+                      "installedShape": installed_shape}, ensure_ascii=False, indent=1))
     return 0
 
 
