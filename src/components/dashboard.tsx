@@ -133,8 +133,9 @@ interface DashboardData {
     recentLogs: Array<Record<string, string>>;
   };
   orders: Array<Record<string, string | number | null>>;
+  rollingBuyNotional24h: number;
   todayBuyNotional: number;
-  limits: { maxPositions?: number; maxNameFraction?: number; firstTrancheFraction?: number; principalKrw?: number; usdKrwSafetyRate?: number } | null;
+  limits: { maxPositions?: number; maxNameFraction?: number; firstTrancheFraction?: number; principalKrw?: number; usdKrwSafetyRate?: number; dailyBuyCapKrw?: number; buyCapWindow?: string } | null;
   blockedReasonCounts: Record<string, number>;
 }
 
@@ -192,6 +193,7 @@ const initial: DashboardData = {
     recentLogs: [],
   },
   orders: [],
+  rollingBuyNotional24h: 0,
   todayBuyNotional: 0,
   limits: null,
   blockedReasonCounts: {},
@@ -537,7 +539,8 @@ export function Dashboard() {
         health,
         agent: agent.data,
         orders: orders.data?.orders ?? [],
-        todayBuyNotional: orders.data?.todayBuyNotional ?? 0,
+        rollingBuyNotional24h: orders.data?.rollingBuyNotional24h ?? orders.data?.todayBuyNotional ?? 0,
+        todayBuyNotional: orders.data?.rollingBuyNotional24h ?? orders.data?.todayBuyNotional ?? 0,
         limits: orders.data?.limits ?? null,
         blockedReasonCounts: orders.data?.blockedReasonCounts ?? {},
       });
@@ -719,11 +722,20 @@ export function Dashboard() {
             <p>앱 거래 기준 추정 손익: {data.agent.strategy?.estimatedPnlKrw == null
               ? "체결가·잔고 확인 필요"
               : `${Math.round(data.agent.strategy.estimatedPnlKrw).toLocaleString()}원 (${data.agent.strategy.estimatedReturnPct?.toFixed(2)}%)`}</p>
+            <p>최근 24시간 매수 한도 {krw(data.rollingBuyNotional24h)} / {krw(DAILY_BUY_CAP_KRW)}원</p>
             <p className="text-slate-500">한도·비중용 추정 손익은 편도 비용 0.15%, 달러당 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원 가정입니다. 실제 수수료·세금·환율 반영 수익률과 다르며 전략 우위를 뜻하지 않습니다.</p>
-            <p className="text-slate-500">현재 USD/KRW: {data.agent.strategy?.usdKrw?.display ?? "미확인"}
+            <p className="flex flex-wrap items-center gap-2 text-slate-500">현재 USD/KRW: {data.agent.strategy?.usdKrw?.display ?? "미확인"}
               {data.agent.strategy?.usdKrw?.source && data.agent.strategy.usdKrw.source !== "NONE"
                 ? ` (${data.agent.strategy.usdKrw.source})` : ""}
-              . 주문 한도는 계속 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원을 씁니다.</p>
+              . 주문 한도는 계속 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원을 씁니다.
+              {data.agent.strategy?.usdKrw?.status === "AVAILABLE"
+                && typeof data.agent.strategy.usdKrw.rate === "number"
+                && data.agent.strategy.usdKrw.rate > (data.limits?.usdKrwSafetyRate ?? USD_KRW_SAFETY_RATE) && (
+                <Badge variant="destructive">
+                  한도는 고정 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원 가정을 사용합니다
+                </Badge>
+              )}
+            </p>
             <UsFxPnlBlock title="미국(NASDAQ) 주가·환차 손익" data={data.agent.strategy?.usFxPnl} />
             {(data.agent.strategy?.unresolvedOrders ?? 0) > 0 && <p className="text-red-700">주문 결과 미확인 {data.agent.strategy?.unresolvedOrders}건: 증권사 주문·체결 확인 전 신규 매수를 차단합니다.</p>}
           </CardContent>
@@ -741,7 +753,7 @@ export function Dashboard() {
           </AlertTitle>
           <AlertDescription>
             활성화하면 KIS VTS 모의계좌에 국내·미국(NASDAQ) 모의주문을
-            제출합니다. 하루 합산 신규 매수 최대 {krw(DAILY_BUY_CAP_KRW)}원입니다. 국내 1회 최대 {krw(domesticOrderCapKrw)}원, 미국 1회 최대 {US_ORDER_CAP_USD.toLocaleString("ko-KR")}달러·미국 종목당 초기잔고의 {usNamePct}%입니다. 미국 주문 전 KIS 주문가능금액·수량을 확인합니다.
+            제출합니다. 최근 24시간 매수 한도 {krw(DAILY_BUY_CAP_KRW)}원입니다. 국내 1회 최대 {krw(domesticOrderCapKrw)}원, 미국 1회 최대 {US_ORDER_CAP_USD.toLocaleString("ko-KR")}달러·미국 종목당 초기잔고의 {usNamePct}%입니다. 미국 주문 전 KIS 주문가능금액·수량을 확인합니다.
             변동성에 따라 진입 시 3~8% 손절 기준을 정하고, +10% 부분 익절은 보유 회차당 한 번,
             +20%에서는 잔여 수량을 매도합니다. 손절가는 체결 보장 가격이 아닙니다.
             실전 호스트는 차단되며, 이 앱의 체결로 확인한 보유 수량만 매도합니다.
@@ -1038,6 +1050,7 @@ export function Dashboard() {
                     최대 {data.limits.maxPositions ?? 5}종목 · 국내 종목당{" "}
                     {Math.round((data.limits.maxNameFraction ?? 0.10) * 100)}% 이하 ·
                     미국 종목당 {usNamePct}% 이하 · 계좌 초기잔고 기준 {krw(data.limits.principalKrw ?? PAPER_CAPITAL_KRW)}원
+                    · 최근 24시간 매수 한도 {krw(data.rollingBuyNotional24h)} / {krw(data.limits.dailyBuyCapKrw ?? DAILY_BUY_CAP_KRW)}원
                   </p>
                 )}
               </CardContent>

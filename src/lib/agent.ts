@@ -22,7 +22,7 @@ import {
   setOverseasBalanceSnapshot,
   state,
 } from "@/lib/store";
-import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
+import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileAgentOwnedFills, recordStrategyPnlSnapshot, strategyValuation, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 import { recordPerformance } from "@/lib/performance-history";
 import { marketRiskLimits, PAPER_CAPITAL_KRW } from "@/lib/trading-limits";
 import { observeResearch, refreshResearchNews, researchHeadlinesFor } from "@/lib/news-research";
@@ -282,9 +282,12 @@ export async function runAgentCycle(): Promise<void> {
     globalAgent.__vtsAgentRunningCycle = false;
     state.lastCycleAt = new Date().toISOString();
     const valuation = strategyValuation();
-    if (valuation.valid) state.performanceHistory = recordPerformance(state.performanceHistory, {
-      at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: STRATEGY_VERSION,
-    });
+    if (valuation.valid) {
+      recordStrategyPnlSnapshot(valuation.pnl);
+      state.performanceHistory = recordPerformance(state.performanceHistory, {
+        at: state.lastCycleAt, pnlKrw: valuation.pnl, budgetKrw: PAPER_CAPITAL_KRW, strategyVersion: STRATEGY_VERSION,
+      });
+    }
     saveState();
   }
 }
