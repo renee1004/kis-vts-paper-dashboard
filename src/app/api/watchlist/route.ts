@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { z } from "zod";
 import type { TradingMarket } from "@/lib/domain";
 import { KisVtsClient } from "@/lib/kis-vts-client";
@@ -20,7 +21,7 @@ const removeSchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({ success: true, data: { domestic: state.watchlist, us: state.usWatchlist } });
+  return apiJson({ success: true, data: { domestic: state.watchlist, us: state.usWatchlist } });
 }
 
 async function quote(market: TradingMarket, stockCode: string): Promise<number | null> {
@@ -36,22 +37,22 @@ export async function POST(request: NextRequest) {
   const parsed = addSchema.safeParse(await request.json().catch(() => null));
   const stockCode = parsed.success ? normalizeSymbol(parsed.data.market, parsed.data.stockCode) : null;
   if (!parsed.success || !stockCode) {
-    return NextResponse.json({ success: false, error: "INVALID_WATCHLIST_ITEM: 국내 6자리 코드 또는 NASDAQ 티커(1~5자 영문)" }, { status: 400 });
+    return apiJson({ success: false, error: "INVALID_WATCHLIST_ITEM: 국내 6자리 코드 또는 NASDAQ 티커(1~5자 영문)" }, { status: 400 });
   }
   const { market } = parsed.data;
   const existing = (market === "DOMESTIC" ? state.watchlist : state.usWatchlist).find((i) => i.stockCode === stockCode);
-  if (existing) return NextResponse.json({ success: true, message: "이미 관심종목에 있습니다.", data: existing });
+  if (existing) return apiJson({ success: true, message: "이미 관심종목에 있습니다.", data: existing });
 
   // Validate with a live VTS quote so typos don't sit in the agent loop.
   const price = await quote(market, stockCode);
   if (!price) {
-    return NextResponse.json({ success: false, error: `KIS 시세 조회 실패: ${stockCode} (${market === "DOMESTIC" ? "국내" : "NASDAQ"})` }, { status: 422 });
+    return apiJson({ success: false, error: `KIS 시세 조회 실패: ${stockCode} (${market === "DOMESTIC" ? "국내" : "NASDAQ"})` }, { status: 422 });
   }
   const result = addWatchlistItem({ market, stockCode, stockName: parsed.data.stockName, source: "USER", currentPrice: price });
-  if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+  if (!result.ok) return apiJson({ success: false, error: result.error }, { status: 400 });
   addLog("INFO", `관심종목 추가: ${result.item.stockName}(${stockCode}) ${market}`);
   saveState();
-  return NextResponse.json({ success: true, message: `${result.item.stockName}(${stockCode}) 추가됨. 다음 사이클부터 분석합니다.`, data: result.item }, { status: 201 });
+  return apiJson({ success: true, message: `${result.item.stockName}(${stockCode}) 추가됨. 다음 사이클부터 분석합니다.`, data: result.item }, { status: 201 });
 }
 
 export async function DELETE(request: NextRequest) {
@@ -62,16 +63,16 @@ export async function DELETE(request: NextRequest) {
     stockCode: url.searchParams.get("stockCode") ?? "",
     force: url.searchParams.get("force") === "true",
   });
-  if (!parsed.success) return NextResponse.json({ success: false, error: "INVALID_WATCHLIST_ITEM" }, { status: 400 });
+  if (!parsed.success) return apiJson({ success: false, error: "INVALID_WATCHLIST_ITEM" }, { status: 400 });
   const result = removeWatchlistItem(parsed.data);
   if (!result.ok) {
     if (result.error === "HELD_POSITION_CONFIRM_REQUIRED") {
-      return NextResponse.json({ success: false, error: result.error, heldQuantity: result.heldQuantity,
+      return apiJson({ success: false, error: result.error, heldQuantity: result.heldQuantity,
         message: `보유 중(${result.heldQuantity}주)인 종목입니다. 삭제해도 손절·익절은 계속 감시되지만 추세 이탈 매도 신호는 더 이상 갱신되지 않습니다.` }, { status: 409 });
     }
-    return NextResponse.json({ success: false, error: result.error }, { status: result.error === "NOT_FOUND" ? 404 : 400 });
+    return apiJson({ success: false, error: result.error }, { status: result.error === "NOT_FOUND" ? 404 : 400 });
   }
   addLog("INFO", `관심종목 삭제: ${result.item.stockName}(${result.item.stockCode}) ${result.item.market}`);
   saveState();
-  return NextResponse.json({ success: true, message: `${result.item.stockName}(${result.item.stockCode}) 삭제됨.`, data: result.item });
+  return apiJson({ success: true, message: `${result.item.stockName}(${result.item.stockCode}) 삭제됨.`, data: result.item });
 }

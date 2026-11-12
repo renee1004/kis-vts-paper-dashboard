@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { KisVtsClient, toBalanceSnapshot, toOverseasBalanceSnapshot } from "@/lib/kis-vts-client";
 import { getPublicKisConfig } from "@/lib/safety";
 import { setBalanceSnapshot, setOverseasBalanceSnapshot, state, saveState } from "@/lib/store";
@@ -6,7 +6,7 @@ import { setBalanceSnapshot, setOverseasBalanceSnapshot, state, saveState } from
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({
+  return apiJson({
     success: true,
     data: {
       balance: state.balanceSnapshot,
@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST() {
   if (!getPublicKisConfig().configured) {
-    return NextResponse.json({ success: false, error: "KIS_NOT_CONFIGURED" }, { status: 400 });
+    return apiJson({ success: false, error: "KIS_NOT_CONFIGURED" }, { status: 400 });
   }
 
   try {
@@ -40,7 +40,7 @@ export async function POST() {
       // Domestic sync succeeded; overseas may be unavailable on some accounts.
     }
 
-    return NextResponse.json({
+    return apiJson({
       success: true,
       server: "vts",
       data: {
@@ -54,7 +54,7 @@ export async function POST() {
         : "VTS 국내 잔고 동기화 완료. 해외 잔고는 실패했습니다.",
     });
   } catch {
-    return NextResponse.json(
+    return apiJson(
       { success: false, error: "VTS_BALANCE_FAILED", lastError: state.lastError },
       { status: 502 },
     );

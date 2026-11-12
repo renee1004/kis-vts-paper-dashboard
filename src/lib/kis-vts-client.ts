@@ -10,6 +10,7 @@ import {
   Position,
   VTS_BASE_URL,
 } from "@/lib/domain";
+import { redactSensitiveText } from "@/lib/redact";
 import { addLog, loadSecrets, saveSecrets, setLastError, state } from "@/lib/store";
 import { completedBars, type DailyBar } from "@/lib/strategy";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
@@ -51,10 +52,14 @@ let lastRequestAt = 0;
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value !== "string" && typeof value !== "number") return fallback;
-  // Diagnostic text is bounded and strips header-like secret material.
-  return String(value)
-    .replace(/(?:authorization|appkey|appsecret|access_token)\s*[:=]\s*\S+/gi, "[REDACTED]")
-    .slice(0, 180);
+  // Diagnostic text is bounded and strips header-like secret material
+  // and account-like numbers (8 digits, 8-2, 10 digits).
+  return redactSensitiveText(
+    String(value).replace(
+      /(?:authorization|appkey|appsecret|access_token)\s*[:=]\s*\S+/gi,
+      "[REDACTED]",
+    ),
+  ).slice(0, 180);
 }
 
 function safeNumber(value: unknown): number {

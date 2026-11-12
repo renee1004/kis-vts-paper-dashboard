@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { z } from "zod";
 import { VTS_BASE_URL } from "@/lib/domain";
 import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
@@ -15,14 +16,14 @@ const schema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({ success: true, data: getPublicKisConfig() });
+  return apiJson({ success: true, data: getPublicKisConfig() });
 }
 
 export async function POST(request: NextRequest) {
   if (!isLocalRequest(request)) return localOnlyResponse();
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json(
+    return apiJson(
       {
         success: false,
         error: "INVALID_KIS_CONFIG",
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
   clearTokenCache();
   forceSafetyLock("KIS_CONFIG_CHANGED");
 
-  return NextResponse.json({
+  return apiJson({
     success: true,
     data: getPublicKisConfig(),
     message: "설정 저장 완료. 민감정보는 응답에 포함되지 않습니다.",

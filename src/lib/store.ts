@@ -2,6 +2,7 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { ownedLot } from "@/lib/ownership";
+import { sanitizeLastError } from "@/lib/redact";
 import type { StopOverride } from "@/lib/stop-rebase";
 import type { PerformancePoint } from "@/lib/performance-history";
 import fs from "node:fs";
@@ -426,7 +427,7 @@ export function addLog(
 }
 
 export function setLastError(error: KisLastError | null): void {
-  state.lastError = error;
+  state.lastError = error ? sanitizeLastError(error) : null;
   saveState();
 }
 

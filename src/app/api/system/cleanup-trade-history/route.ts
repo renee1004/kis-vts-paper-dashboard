@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { resetHistory, state } from "@/lib/store";
 import { isLocalRequest, localOnlyResponse } from "@/lib/local-request";
 
 export async function GET() {
-  return NextResponse.json({
+  return apiJson({
     success: true,
     data: {
       tradeHistory: state.tradeHistory.length,
@@ -25,10 +26,10 @@ export async function POST(request: NextRequest) {
   if (!isLocalRequest(request)) return localOnlyResponse();
   const body = (await request.json().catch(() => ({}))) as { confirm?: string };
   if (body.confirm !== "RESET_TRADE_AND_LOG_HISTORY") {
-    return NextResponse.json(
+    return apiJson(
       { success: false, error: "CONFIRMATION_REQUIRED" },
       { status: 400 },
     );
   }
-  return NextResponse.json({ success: true, deleted: resetHistory() });
+  return apiJson({ success: true, deleted: resetHistory() });
 }

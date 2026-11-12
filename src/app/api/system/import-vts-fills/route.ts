@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import {
   applyPre0911Import,
   previewPre0911Import,
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json({ success: true, data: previewPre0911Import() });
+  return apiJson({ success: true, data: previewPre0911Import() });
 }
 
 export async function POST(request: Request) {
@@ -25,17 +25,17 @@ export async function POST(request: Request) {
     sameOrigin = !origin || new URL(origin).host === (request.headers.get("host") ?? new URL(request.url).host);
   } catch { sameOrigin = false; }
   if (!sameOrigin || request.headers.get("sec-fetch-site") === "cross-site")
-    return NextResponse.json({ success: false, error: "CROSS_SITE_REQUEST_BLOCKED" }, { status: 403 });
+    return apiJson({ success: false, error: "CROSS_SITE_REQUEST_BLOCKED" }, { status: 403 });
   const body = (await request.json().catch(() => ({}))) as { action?: string; confirm?: string };
   try {
     if (body.action === "APPLY" && body.confirm === PRE_0911_APPLY_CONFIRM)
-      return NextResponse.json({ success: true, data: applyPre0911Import() });
+      return apiJson({ success: true, data: applyPre0911Import() });
     if (body.action === "REBASE_STOPS" && body.confirm === REBASE_STOPS_CONFIRM)
-      return NextResponse.json({ success: true, data: rebaseImportedStops() });
+      return apiJson({ success: true, data: rebaseImportedStops() });
     if (body.action === "REVERT" && body.confirm === PRE_0911_REVERT_CONFIRM)
-      return NextResponse.json({ success: true, data: revertPre0911Import() });
-    return NextResponse.json({ success: false, error: "CONFIRMATION_REQUIRED" }, { status: 400 });
+      return apiJson({ success: true, data: revertPre0911Import() });
+    return apiJson({ success: false, error: "CONFIRMATION_REQUIRED" }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "IMPORT_FAILED" }, { status: 400 });
+    return apiJson({ success: false, error: error instanceof Error ? error.message : "IMPORT_FAILED" }, { status: 400 });
   }
 }

@@ -1,37 +1,26 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
+import { isLocalRequestHeaders } from "@/lib/loopback";
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
-
-function hostnameOf(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    return new URL(value.includes("://") ? value : `http://${value}`).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
+export { isLocalRequestHeaders } from "@/lib/loopback";
 
 /**
  * True only for a browser on this PC (http://localhost:3939 or 127.0.0.1).
  * Phone/LAN/Tailscale browsers send their own Host (Tailscale IP, MagicDNS name,
- * LAN IP) and a browser cannot forge Host/Origin, so they get read-only access.
- * The dashboard has no login: this is not a defence against a hand-crafted
- * non-browser request from inside the private network.
+ * LAN IP) and a browser cannot forge Host/Origin, so they stay off key-save/arm/start.
+ * This is an extra layer, not authentication: a crafted request can still send
+ * Host: localhost. Shared-token auth in proxy.ts is the actual /api gate.
  */
 export function isLocalRequest(request: Request): boolean {
-  const host = hostnameOf(request.headers.get("host"));
-  if (!host || !LOOPBACK_HOSTS.has(host)) return false;
-  const origin = request.headers.get("origin");
-  if (origin !== null) {
-    const originHost = hostnameOf(origin);
-    if (!originHost || !LOOPBACK_HOSTS.has(originHost)) return false;
-  }
-  return request.headers.get("sec-fetch-site") !== "cross-site";
+  return isLocalRequestHeaders({
+    host: request.headers.get("host"),
+    origin: request.headers.get("origin"),
+    secFetchSite: request.headers.get("sec-fetch-site"),
+  });
 }
 
 /** Secret entry and arming/start controls stay on the PC (localhost) only. */
-export function localOnlyResponse(): NextResponse {
-  return NextResponse.json(
+export function localOnlyResponse() {
+  return apiJson(
     {
       success: false,
       error:

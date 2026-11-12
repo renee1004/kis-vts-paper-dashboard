@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { startAgent } from "@/lib/agent";
 import { testVtsConnection } from "@/lib/kis-vts-client";
 import {
@@ -35,14 +36,14 @@ export async function POST(request: NextRequest) {
       startAgent();
       started = true;
     } else {
-      return NextResponse.json(
+      return apiJson(
         { success: false, error: "UNSUPPORTED_ACTION" },
         { status: 400 },
       );
     }
 
     const decision = getOrderDecision();
-    return NextResponse.json({
+    return apiJson({
       success: true,
       effectiveSafetyMode: computeSafetyMode(),
       canPlaceDomesticOrderNow: decision.allowed,
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       realOrderApiAvailable: false,
     });
   } catch (error) {
-    return NextResponse.json(
+    return apiJson(
       {
         success: false,
         error: error instanceof Error ? error.message : "VTS_AUTO_TRANSITION_FAILED",
