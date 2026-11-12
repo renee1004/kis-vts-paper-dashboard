@@ -5,4 +5,5 @@ pykrx
 yfinance
 exchange_calendars==4.13.2
 skfolio
-opendartreader==0.3.3
+opendartreader==0.2.2; python_version < "3.13"
+opendartreader==0.3.3; python_version >= "3.13"
