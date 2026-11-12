@@ -14,8 +14,9 @@ PSR and crudeOil are stored for display only; the TS scoring schema strips them 
 
 Usage: .venv-data/bin/python scripts/scorecard-collect.py [DOMESTIC:005930 US_NASDAQ:AAPL ...]
 Without args, reads $DATA_DIR/scorecard-universe.json written by the dashboard agent.
-Also runs display-only sidecars: calendar-crosscheck.py (exchange_calendars) and
-risk-contribution.py (skfolio). Those never place orders and never read .env.
+Also runs display-only sidecars: calendar-crosscheck.py (exchange_calendars),
+risk-contribution.py (skfolio), and opendart-fundamentals.py (OpenDartReader).
+Those never place orders. The DART sidecar reads DART_API_KEY only (not KIS keys).
 """
 import datetime as dt, json, os, sys, tempfile, traceback
 
@@ -313,7 +314,7 @@ def run_sidecar(filename):
     return mod.main() if hasattr(mod, "main") else None
 
 sidecars = {}
-for name in ("calendar-crosscheck.py", "risk-contribution.py"):
+for name in ("calendar-crosscheck.py", "risk-contribution.py", "opendart-fundamentals.py"):
     try:
         payload = run_sidecar(name)
         sidecars[name] = (payload or {}).get("summary") if isinstance(payload, dict) else True

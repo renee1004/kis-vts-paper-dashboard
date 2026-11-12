@@ -11,7 +11,7 @@
 1. **관점별 점수** (+1 / 0 / −1 / 미확인). 데이터가 없으면 0이 아니라 `미확인`.
    | 관점 | 입력 | +1 | −1 |
    |---|---|---|---|
-   | 펀더멘털 | pykrx PER·PBR·시가총액 | PER 0~15, PBR ≤1.5 | 적자·PER>40·PBR>5·시총<1,000억 |
+   | 펀더멘털 | pykrx/KIS/네이버 PER·PBR·시가총액. 국내 비ETF는 값이 없으면 Open DART 매출·영업이익·순이익 YoY·부채비율·ROE | PER 0~15, PBR ≤1.5 (DART 대체: 매출 YoY>0·흑자·부채비율≤150%) | 적자·PER>40·PBR>5·시총<1,000억 (DART 대체: 적자·매출 YoY≤−20%·부채비율>200%) |
    | 수급 | pykrx 외국인·기관 5일 순매수 | 둘 다 순매수 | 둘 다 순매도 |
    | 기술적 | 완료 일봉 ≥200 (FDR 캐시 우선, 없으면 KIS) | 종가>20>60>200일선, 52주 고점 15% 이내 | 종가·20일선 < 60일선 |
    | 뉴스 | **헤드라인·수집 신선도만** (`researchHeadlinesFor` → `scoreNews`) | 직접 긍정 제목만 | 직접 부정 제목만 |
@@ -39,12 +39,21 @@
 ## 데이터 수집
 ```bash
 python3 -m venv .venv-data && .venv-data/bin/pip install -r scripts/requirements-data.txt
-.venv-data/bin/python scripts/scorecard-collect.py            # .data/scorecard-universe.json(에이전트가 기록) 사용
+.venv-data/bin/python scripts/scorecard-collect.py            # .data/scorecard-universe.json(에이전트가 기록) 사용; DART 사이드카 포함
 .venv-data/bin/python scripts/scorecard-collect.py DOMESTIC:005930 US_NASDAQ:AAPL
+.venv-data/bin/python scripts/opendart-fundamentals.py         # 국내 Open DART만 재수집 (DART_API_KEY)
 .venv-data/bin/python scripts/calendar-crosscheck.py --self-check
 .venv-data/bin/python scripts/risk-contribution.py --self-check
+.venv-data/bin/python scripts/opendart-fundamentals.py --self-check
 ```
-결과: `.data/scorecard-data.json`. 같은 실행에서 달력 교차검증(`.data/calendar-crosscheck.json`)과 집중도·위험기여(`.data/risk-contribution.json`)도 기록한다. 둘 다 **표시·연구 전용**이며 주문 게이트에 연결하지 않는다. 4일 넘게 오래되면 전부 미확인 처리. 미국 종목은 pykrx 대상이 아니라 펀더멘털·수급이 미확인 → 항상 보류(의도된 보수 동작). ETF도 PER·수급이 없으면 보류. 하루 1회(장 마감 후) 실행 권장. 패키지: `finance-datareader`, `pykrx`, `yfinance`, `exchange_calendars==4.13.2`(Apache-2.0), `skfolio`(BSD-3-Clause).
+결과: `.data/scorecard-data.json`. 같은 실행에서 달력 교차검증(`.data/calendar-crosscheck.json`), 집중도·위험기여(`.data/risk-contribution.json`), Open DART 국내 재무(`.data/dart-fundamentals.json`)도 기록한다. 모두 **표시·연구 전용**이며 주문 게이트에 연결하지 않는다. 점수판 수집 캐시는 4일 넘게 오래되면 전부 미확인 처리. DART는 **KST 당일 캐시만** 신선하고, 키가 없거나 조회 실패·어제 파일은 `미확인`+이유로 표시한다(어제 숫자를 오늘 값처럼 쓰지 않음). 미국 종목은 pykrx/DART 대상이 아니라 펀더멘털·수급이 미확인 → 항상 보류(의도된 보수 동작). ETF도 PER·수급이 없으면 보류. 하루 1회(장 마감 후) 실행 권장. 패키지: `finance-datareader`, `pykrx`, `yfinance`, `exchange_calendars==4.13.2`(Apache-2.0), `skfolio`(BSD-3-Clause), `opendartreader`(MIT, [라이선스](third-party/opendartreader-LICENSE.txt)). dart-fss는 쓰지 않습니다.
+
+Open DART 키는 `DART_API_KEY` 환경변수(또는 `.env`의 해당 한 줄). 발급: https://opendart.fss.or.kr/ . 키를 커밋·로그·에러 원문에 넣지 않습니다.
+
+```bash
+.venv-data/bin/python scripts/opendart-fundamentals.py            # 관심종목 국내 코드
+.venv-data/bin/python scripts/opendart-fundamentals.py DOMESTIC:005930
+```
 
 ## A/B/C 비교 원장과 라이브 엔진 복원
 - 2026-11-06 점수판 교체 기록은 `.data/decision-engine-cutover.json`의 `scorecardCutoverAt`에 보존합니다.
@@ -68,6 +77,7 @@ python3 -m venv .venv-data && .venv-data/bin/pip install -r scripts/requirements
 | 값 | 1순위 | 2순위 | 3순위 | 비고 |
 |---|---|---|---|---|
 | 국내 PER·PBR·시총 | KIS `inquire-price`(FHKST01010100) 응답의 `per`·`pbr`·`hts_avls` — 앱이 이미 하는 현재가 호출에서 같이 저장(추가 호출 없음) | 네이버 모바일 JSON `m.stock.naver.com/api/stock/{code}/integration` | pykrx (KRX 로그인 필요, 현재 실패) | 이유 문구에 `[KIS]`/`[NAVER]`/`[PYKRX]` 표시 |
+| 국내 재무(DART 대체) | Open DART `finstate` (매출·영업이익·당기순이익 YoY, 부채비율, ROE) — PER·PBR·시총이 비었을 때만 펀더멘털 점수 | — | — | 이유 문구에 `[OPENDART]`. 키 없음/실패/어제 캐시 → `미확인`+이유. dart-fss 미사용 |
 | 국내 외국인·기관 순매수 | KIS `inquire-investor`(FHKST01010900), 6시간 캐시, 실패 시 6시간 재시도 안 함 | 네이버 `.../{code}/trend?pageSize=5` (순매수 **수량×종가** 근사, 원) | pykrx | KIS는 백만원 단위 거래대금 |
 | 미국 PER·PBR·시총 | yfinance `info`(trailingPE, priceToBook, marketCap×원달러) | — | — | |
 | 국내·미국 PSR (참고) | 위와 동일 경로 + yfinance `priceToSalesTrailing12Months` | — | — | **점수 미사용.** 출처는 값마다 기록, 없으면 `unknown` |
@@ -75,7 +85,7 @@ python3 -m venv .venv-data && .venv-data/bin/pip install -r scripts/requirements
 | 미국 수급 | 수집 안 함 → 미확인 | | | 기관 보유 변화는 분기 13F 기준이라 시차가 커서 정직한 단기 수급 대용이 아님 |
 | ETF 펀더멘털 | 미확인(ETF는 PER·PBR 의미 없음) | | | 수급은 네이버로 채움 |
 | 일봉·거시 | FinanceDataReader | KIS 일봉(200개 미만이면 기술적 미확인) | | |
-| 실적 발표일 | 수동 항목(`data/event-calendar.json`, git 관리) — 자동 수집분은 `.data/event-calendar-auto.json`(git 제외)에 저장, 읽을 때 수동이 우선 | yfinance calendar (미국, 국내 `.KS`/`.KQ`) | ETF는 실적 없음(30일 유효) | 다음 발표일까지를 확인 범위로 봄. 못 찾으면 미확인 → 신규 매수 보류 |
+| 실적 발표일 | 수동 항목(`data/event-calendar.json`, git 관리) — 자동 수집분은 `.data/event-calendar-auto.json`(git 제외)에 저장, 읽을 때 수동이 우선 | 국내: 당일 Open DART 공시 목록(잠정실적·분기/반기/사업보고서) + 분기 주기 추정일. 미국: yfinance calendar | ETF는 실적 없음(30일 유효) | 다음 발표일까지를 확인 범위로 봄. 못 찾으면 미확인 → 신규 매수 보류(점수판 표시). **주문 게이트는 이 달력을 쓰지 않음** |
 
 한계:
 - KIS 값은 **서버 재시작 후** 실행 사이클에서만 채워집니다. VTS에서 `inquire-investor`가 지원되는지는 아직 실제 호출로 확인하지 않았습니다(키 보호를 위해 별도 테스트 호출을 하지 않음). 실패하면 자동으로 네이버 캐시를 씁니다.

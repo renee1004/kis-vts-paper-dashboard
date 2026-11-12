@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { TradingMarket } from "@/lib/domain";
 import { DECISION_ENGINE_VERSION, type DailyBar } from "@/lib/strategy";
 import { SCORECARD_VERSION, referenceCrudeOil, referencePsr, UNKNOWN_CRUDE_OIL, type CrudeOilReference, type EventCalendar, type FlowsInput, type FundamentalsInput, type MacroInput, type PsrReference } from "@/lib/scorecard";
+import { dartEarningsOverlay } from "@/lib/dart-data";
 
 const root = () => process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const num = z.number().finite().nullable();
@@ -114,15 +115,17 @@ const calendarSchema = z.object({
   earnings: z.record(z.string(), z.object({ verifiedThrough: z.string(), dates: z.array(z.string()), source: z.string().optional() })),
 });
 const autoSchema = z.object({ earnings: calendarSchema.shape.earnings });
-/** Repo calendar (FOMC + manual earnings) merged over collector auto dates in .data; manual wins. */
+/** Repo calendar (FOMC + manual earnings) merged over collector auto dates in .data; manual wins.
+ * Fresh Open DART earnings overlay domestic auto dates; stale DART cache is ignored. */
 export function eventCalendar(): EventCalendar | null {
   let base: EventCalendar;
   try { base = calendarSchema.parse(JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "event-calendar.json"), "utf8"))); }
   catch { return null; }
+  let autoEarnings: EventCalendar["earnings"] = {};
   try {
-    const auto = autoSchema.parse(JSON.parse(fs.readFileSync(path.join(root(), "event-calendar-auto.json"), "utf8")));
-    return { ...base, earnings: { ...auto.earnings, ...base.earnings } };
-  } catch { return base; }
+    autoEarnings = autoSchema.parse(JSON.parse(fs.readFileSync(path.join(root(), "event-calendar-auto.json"), "utf8"))).earnings;
+  } catch { /* DART overlay still applies when auto file is missing */ }
+  return { ...base, earnings: { ...autoEarnings, ...dartEarningsOverlay(), ...base.earnings } };
 }
 export interface DecisionEngineCutover {
   version: string;

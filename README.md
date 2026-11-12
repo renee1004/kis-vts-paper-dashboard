@@ -229,7 +229,8 @@ curl -X POST http://localhost:3939/api/system/cleanup-trade-history \
 
 ## 연구 데이터 수집 (주문 없음)
 
-점수판·달력 교차검증·위험기여 JSON은 git에 넣지 않는 `.data/`에만 씁니다.
+점수판·달력 교차검증·위험기여·Open DART 재무 JSON은 git에 넣지 않는 `.data/`에만 씁니다.
+`scorecard-collect.py`가 DART 수집을 사이드카로 실행합니다 (`DART_API_KEY`가 있을 때).
 
 ```bash
 python3 -m venv .venv-data
@@ -237,12 +238,29 @@ python3 -m venv .venv-data
 .venv-data/bin/python scripts/scorecard-collect.py
 ```
 
-추가 패키지: `exchange_calendars==4.13.2`(Apache-2.0, 휴장일 대조), `skfolio`(BSD-3-Clause, 위험기여).
-주문 게이트는 이 패키지를 쓰지 않습니다. 네트워크 없이 논리 확인:
+추가 패키지: `exchange_calendars==4.13.2`(Apache-2.0, 휴장일 대조), `skfolio`(BSD-3-Clause, 위험기여),
+`opendartreader`(MIT, 국내 Open DART 재무·실적공시). 주문 게이트는 이 패키지를 쓰지 않습니다.
+
+국내 점수판 펀더멘털의 Open DART 보완은 **표시·연구 전용**입니다. API 키는
+환경변수 `DART_API_KEY`(opendart.fss.or.kr 에서 발급)에서만 읽고, 프로젝트 `.env` /
+`.env.local`의 `DART_API_KEY=` 한 줄만 보조로 읽습니다. 키를 코드에 넣거나 로그로
+남기거나 git에 커밋하지 마세요. `.env*` 는 git에서 제외됩니다.
+
+```bash
+# .env 에 DART_API_KEY=... 를 넣은 뒤
+.venv-data/bin/python scripts/opendart-fundamentals.py
+.venv-data/bin/python scripts/opendart-fundamentals.py DOMESTIC:005930
+.venv-data/bin/python scripts/opendart-fundamentals.py --force   # 당일 캐시 무시
+```
+
+결과는 `.data/dart-fundamentals.json` (KST 날짜 단위 캐시). 키가 없거나 조회가
+실패하면 점수판 펀더멘털은 `미확인`과 이유만 보여 주고, 어제 캐시를 오늘 값처럼
+쓰지 않습니다. 네트워크 없이 논리 확인:
 
 ```bash
 .venv-data/bin/python scripts/calendar-crosscheck.py --self-check
 .venv-data/bin/python scripts/risk-contribution.py --self-check
+.venv-data/bin/python scripts/opendart-fundamentals.py --self-check
 ```
 
 문서: [점수판](docs/scorecard.md), [거래일 달력](docs/market-calendar.md), [집중도·위험기여](docs/risk-contribution.md).
