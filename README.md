@@ -70,6 +70,45 @@ http://localhost:3939
 포트를 바꾸려면 `PORT=4000 npm run dashboard`를 사용합니다. 기존
 `trading_agent_v1` 화면은 `npm run dev:legacy`이며 이 앱과 다릅니다.
 
+## 원격 접속(휴대폰)과 공유 토큰
+
+시작 스크립트는 기본으로 `0.0.0.0`에 바인딩합니다. 아이폰에서 Tailscale로
+같은 주소에 접속하려면 이 기본값을 유지하세요. 바꾸지 않습니다.
+
+원격 API를 쓰려면 **직접** `.env.local`에 아래를 넣고 재시작합니다.
+실제 IP·호스트명·토큰은 저장소에 넣지 마세요.
+
+```text
+DASHBOARD_TOKEN=
+DASHBOARD_ALLOWED_DEV_ORIGINS=
+```
+
+- `DASHBOARD_TOKEN` — `/api/*` 공유 토큰. Next.js 16 요청 게이트(`src/proxy.ts`,
+  기존 middleware)가 `Authorization: Bearer <token>` 또는 화면의 토큰 입력
+  (한국어)이 설정하는 HttpOnly 쿠키를 constant-time으로 비교합니다.
+- `DASHBOARD_ALLOWED_DEV_ORIGINS` — `next dev`가 원격 브라우저에서 스크립트를
+  내려주게 하는 호스트 목록(콤마 구분, 프로토콜 없음). Tailscale IP, MagicDNS
+  이름, LAN IP는 **본인 `.env.local`에만** 적습니다.
+
+설정하지 않으면:
+
+- **localhost** 는 기존처럼 열립니다. 화면과 로그에 원격이 보호되지 않는다는
+  경고가 뜹니다.
+- **원격** `/api/*` 는 `DASHBOARD_TOKEN_REQUIRED` 로 거부됩니다. Host 헤더를
+  localhost로 보내는 것만으로는 인증되지 않습니다.
+- `POST /api/settings/safety-lock` 과 `POST /api/agent/stop` 은 토큰 없이
+  동작합니다(패닉 버튼).
+- 키 저장·무장·시작은 토큰과 별도로 PC localhost 검사도 유지합니다.
+
+바인딩 선택:
+
+- **기본 유지:** `npm run dashboard` (`0.0.0.0` + 토큰). 아이폰 브라우저에서
+  토큰을 한 번 입력하면 쿠키로 유지됩니다.
+- **또는** Tailscale Serve로 HTTPS 앞단을 두고 앱은 localhost만 열 수 있습니다.
+  이 경우에도 `DASHBOARD_TOKEN` 을 설정하세요.
+
+토큰과 허용 호스트는 코드나 로그에 출력하지 않습니다.
+
 PostgreSQL 없이도 `.data/`의 암호화 로컬 저장소로 시작됩니다. PostgreSQL
 모델은 `prisma/schema.prisma`에 준비되어 있습니다.
 
@@ -125,10 +164,12 @@ git에서 제외됩니다.
 ## 상태 확인
 
 ```bash
-curl http://localhost:3939/api/system/local-health
-curl http://localhost:3939/api/agent/status
-curl http://localhost:3939/api/vts-orders
+curl -H "Authorization: Bearer <DASHBOARD_TOKEN>" http://localhost:3939/api/system/local-health
+curl -H "Authorization: Bearer <DASHBOARD_TOKEN>" http://localhost:3939/api/agent/status
+curl -H "Authorization: Bearer <DASHBOARD_TOKEN>" http://localhost:3939/api/vts-orders
 ```
+
+`DASHBOARD_TOKEN` 이 비어 있으면 위 조회는 localhost에서만 됩니다.
 
 실전 서버 호출 여부는 대시보드의 `Real fallback=false`와
 `KIS server=VTS`로 확인합니다. 소스 코드의 모든 KIS fetch는
@@ -138,13 +179,14 @@ curl http://localhost:3939/api/vts-orders
 
 | Method | Path | 역할 |
 |---|---|---|
+| GET/POST | `/api/auth` | 토큰 필요 여부 조회 / HttpOnly 쿠키 설정 |
 | GET | `/api/system/local-health` | 런타임·DB·KIS·안전 상태 |
 | GET | `/api/agent/status` | 사이클 카운터·진단·원장 |
 | POST | `/api/agent/start` | 무장된 VTS 모의 자동매매 시작 |
-| POST | `/api/agent/stop` | 분석 에이전트 중지 |
+| POST | `/api/agent/stop` | 분석 에이전트 중지 (토큰 없이 가능) |
 | GET/POST | `/api/kis/save-config` | boolean 상태 조회 / 암호화 저장 |
 | POST | `/api/kis/test-connection` | VTS token/price/candle/balance 진단 |
-| POST | `/api/settings/safety-lock` | 즉시 SAFE_LOCKED |
+| POST | `/api/settings/safety-lock` | 즉시 SAFE_LOCKED (토큰 없이 가능) |
 | POST | `/api/settings/vts-paper-arm` | PREPARE / ARM |
 | GET/POST | `/api/system/cleanup-trade-history` | 기록 수 확인 / 제한 cleanup |
 | GET/POST | `/api/watchlist` | 관심종목 |
@@ -155,6 +197,7 @@ ARM 요청:
 ```bash
 curl -X POST http://localhost:3939/api/settings/vts-paper-arm \
   -H 'content-type: application/json' \
+  -H 'Authorization: Bearer <DASHBOARD_TOKEN>' \
   -d '{"action":"ARM","confirm":"ARM_VTS_AUTO_ONLY"}'
 ```
 

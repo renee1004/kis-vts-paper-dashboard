@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { testVtsConnection } from "@/lib/kis-vts-client";
 import { getPublicKisConfig } from "@/lib/safety";
 import { state } from "@/lib/store";
 
 export async function POST() {
   if (!getPublicKisConfig().configured) {
-    return NextResponse.json(
+    return apiJson(
       { success: false, error: "KIS_NOT_CONFIGURED" },
       { status: 400 },
     );
@@ -13,14 +13,14 @@ export async function POST() {
 
   try {
     const checks = await testVtsConnection();
-    return NextResponse.json({
+    return apiJson({
       success: true,
       server: "vts",
       allowRealFallback: false,
       checks,
     });
   } catch {
-    return NextResponse.json(
+    return apiJson(
       {
         success: false,
         error: "VTS_CONNECTION_FAILED",

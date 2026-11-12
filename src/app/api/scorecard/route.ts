@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { chartSeries, decisionEngineCutover, scorecardCrudeOil, scorecardsView } from "@/lib/scorecard-data";
 import { calendarCrosscheckView, riskContributionView } from "@/lib/research-display";
 import { SCORECARD_VERSION } from "@/lib/scorecard";
@@ -12,12 +12,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const market = url.searchParams.get("market"), code = url.searchParams.get("stockCode");
     const chart = (market === "DOMESTIC" || market === "US_NASDAQ") && code && /^[A-Z0-9.]{1,20}$/i.test(code) ? chartSeries(market, code) : null;
-    return NextResponse.json({ success: true, data: {
+    return apiJson({ success: true, data: {
       version: SCORECARD_VERSION, liveEngine: DECISION_ENGINE_VERSION, cutover: decisionEngineCutover(),
       cards: scorecardsView(), chart, crudeOil: scorecardCrudeOil(),
       calendarCrosscheck: calendarCrosscheckView(), riskContribution: riskContributionView(),
     } });
   } catch {
-    return NextResponse.json({ success: false, error: "점수판을 읽을 수 없습니다." }, { status: 500 });
+    return apiJson({ success: false, error: "점수판을 읽을 수 없습니다." }, { status: 500 });
   }
 }

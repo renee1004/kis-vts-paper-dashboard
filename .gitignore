@@ -39,6 +39,11 @@ yarn-error.log*
 .strategy-backups/
 .strategy-update.lock
 
+# secret material that must never be committed, even outside .data/
+kis-config.enc
+master.key
+*.key
+
 # vercel
 .vercel
 

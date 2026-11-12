@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import { state } from "@/lib/store";
 import { todayBuyNotional, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({
+  return apiJson({
     success: true,
     data: {
       orders: state.vtsOrders,

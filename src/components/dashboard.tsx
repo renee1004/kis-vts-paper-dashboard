@@ -74,6 +74,7 @@ interface DashboardData {
     };
     version: { gitCommitSha: string; gitBranch: string };
     access?: { localClient: boolean };
+    auth?: { tokenConfigured: boolean; remoteUnprotected: boolean };
   };
   agent: {
     strategy?: {
@@ -212,6 +213,108 @@ function StateBadge({ value }: { value: string }) {
           ? "bg-blue-100 text-blue-700"
           : "bg-slate-100 text-slate-700";
   return <Badge className={style}>{value}</Badge>;
+}
+
+type AccessGate = "loading" | "open" | "token" | "remote-locked";
+
+function AccessGatePanel({
+  gate,
+  token,
+  onTokenChange,
+  onSubmit,
+  tokenBusy,
+  message,
+  onPanic,
+  panicBusy,
+}: {
+  gate: AccessGate;
+  token: string;
+  onTokenChange: (value: string) => void;
+  onSubmit: (event: FormEvent) => void;
+  tokenBusy: boolean;
+  message: string;
+  onPanic: (url: string) => void;
+  panicBusy: boolean;
+}) {
+  return (
+    <div className="mx-auto max-w-lg space-y-4 p-4 lg:p-6">
+      {gate === "loading" ? (
+        <p className="text-sm text-slate-500">인증 상태 확인 중…</p>
+      ) : gate === "remote-locked" ? (
+        <Alert className="border-amber-300 bg-amber-50">
+          <AlertTriangle className="size-4" />
+          <AlertTitle>원격 접속이 잠겨 있습니다</AlertTitle>
+          <AlertDescription>
+            이 PC의 .env.local에 DASHBOARD_TOKEN을 설정하고 대시보드를 재시작한 뒤,
+            아래 칸에 같은 토큰을 한 번 입력하세요. 토큰이 없으면 localhost만
+            기존처럼 열리고 원격 API는 보호되지 않습니다.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <KeyRound className="size-4" /> 대시보드 접근 토큰
+            </CardTitle>
+            <CardDescription>
+              휴대폰·원격 브라우저에서 API를 쓰려면 .env.local의 DASHBOARD_TOKEN을
+              한 번 입력하세요. 토큰은 HttpOnly 쿠키로만 저장되며 화면에 다시
+              보이지 않습니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-3" onSubmit={onSubmit}>
+              <div className="space-y-1">
+                <Label htmlFor="dashboard-token">DASHBOARD_TOKEN</Label>
+                <Input
+                  id="dashboard-token"
+                  type="password"
+                  autoComplete="off"
+                  value={token}
+                  onChange={(event) => onTokenChange(event.target.value)}
+                  required
+                />
+              </div>
+              <Button className="w-full" type="submit" disabled={tokenBusy || !token.trim()}>
+                {tokenBusy ? "확인 중…" : "저장하고 계속"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+      {message && (
+        <Alert className="border-blue-200 bg-blue-50">
+          <Activity className="size-4" />
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">긴급 안전 조작 (토큰 없이 가능)</CardTitle>
+          <CardDescription>
+            안전잠금과 에이전트 중지만 인증 없이 동작합니다. 그 외 API는 토큰이
+            필요합니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2">
+          <Button
+            variant="destructive"
+            onClick={() => onPanic("/api/settings/safety-lock")}
+            disabled={panicBusy}
+          >
+            <LockKeyhole /> 즉시 안전잠금
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => onPanic("/api/agent/stop")}
+            disabled={panicBusy}
+          >
+            <Square /> 에이전트 중지
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function formatPrice(value: number | null, currency: string): string {
@@ -396,6 +499,9 @@ export function Dashboard() {
     accountNo: "",
     productCode: "01",
   });
+  const [gate, setGate] = useState<AccessGate>("loading");
+  const [tokenInput, setTokenInput] = useState("");
+  const [tokenBusy, setTokenBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -404,6 +510,13 @@ export function Dashboard() {
         fetch("/api/agent/status", { cache: "no-store" }),
         fetch("/api/vts-orders", { cache: "no-store" }),
       ]);
+      if (healthRes.status === 401 || agentRes.status === 401 || orderRes.status === 401) {
+        const auth = await fetch("/api/auth", { cache: "no-store" })
+          .then((response) => response.json())
+          .catch(() => ({}));
+        setGate(auth.tokenConfigured ? "token" : "remote-locked");
+        return;
+      }
       const health = await healthRes.json();
       const agent = await agentRes.json();
       const orders = await orderRes.json();
@@ -415,6 +528,7 @@ export function Dashboard() {
         limits: orders.data?.limits ?? null,
         blockedReasonCounts: orders.data?.blockedReasonCounts ?? {},
       });
+      setGate("open");
       setHealthLoaded(true);
     } catch {
       setMessage("대시보드 상태를 불러오지 못했습니다.");
@@ -459,6 +573,49 @@ export function Dashboard() {
     await refresh();
   }
 
+  async function submitToken(event: FormEvent) {
+    event.preventDefault();
+    setTokenBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: tokenInput }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (result.success) {
+        setTokenInput("");
+        await refresh();
+        return;
+      }
+      setMessage(
+        result.error === "DASHBOARD_TOKEN_NOT_CONFIGURED"
+          ? "서버에 DASHBOARD_TOKEN이 없습니다. PC의 .env.local에 설정한 뒤 재시작하세요."
+          : "토큰이 올바르지 않습니다.",
+      );
+    } finally {
+      setTokenBusy(false);
+    }
+  }
+
+  async function panic(url: string) {
+    setAction(url);
+    setMessage("");
+    try {
+      const response = await fetch(url, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      setMessage(
+        result.success
+          ? result.message ?? "완료되었습니다."
+          : result.error ?? "요청이 실패했습니다.",
+      );
+      if (gate === "open") await refresh();
+    } finally {
+      setAction("");
+    }
+  }
+
   async function saveConfig(event: FormEvent) {
     event.preventDefault();
     const result = await post("/api/kis/save-config", {
@@ -474,6 +631,32 @@ export function Dashboard() {
   const safety = data.health.safety;
   const localClient = data.health.access?.localClient ?? false;
   const stats = data.agent.lastCycleSummary;
+  const remoteUnprotected = data.health.auth?.remoteUnprotected === true;
+
+  if (gate !== "open") {
+    return (
+      <main className="min-h-screen bg-slate-100 text-slate-950">
+        <header className="border-b border-slate-800 bg-slate-950 text-white">
+          <div className="mx-auto max-w-[1600px] px-5 py-5">
+            <p className="text-xs font-semibold tracking-[0.22em] text-blue-400">
+              KIS VTS · MOCK AUTO TRADING
+            </p>
+            <h1 className="mt-1 text-2xl font-bold">모의 자동매매 안전 대시보드</h1>
+          </div>
+        </header>
+        <AccessGatePanel
+          gate={gate}
+          token={tokenInput}
+          onTokenChange={setTokenInput}
+          onSubmit={(event) => void submitToken(event)}
+          tokenBusy={tokenBusy}
+          message={message}
+          onPanic={(url) => void panic(url)}
+          panicBusy={Boolean(action)}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -502,6 +685,17 @@ export function Dashboard() {
       </header>
 
       <div className="mx-auto max-w-[1600px] space-y-4 p-4 lg:p-6">
+        {remoteUnprotected && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>DASHBOARD_TOKEN 미설정</AlertTitle>
+            <AlertDescription>
+              이 PC(localhost)는 기존처럼 열려 있습니다. 원격(휴대폰·LAN·Tailscale)
+              접속은 토큰을 설정하기 전까지 보호되지 않습니다. .env.local에
+              DASHBOARD_TOKEN과 DASHBOARD_ALLOWED_DEV_ORIGINS를 넣은 뒤 재시작하세요.
+            </AlertDescription>
+          </Alert>
+        )}
         <Card>
           <CardHeader>
             <CardTitle>전략 검증 상태: 모의 관찰 중</CardTitle>

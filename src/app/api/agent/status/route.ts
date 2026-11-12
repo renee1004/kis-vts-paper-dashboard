@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import {
   computeSafetyMode,
   getOrderDecision,
@@ -22,7 +22,7 @@ export async function GET() {
   const overseasDecision = getOrderDecision("US_NASDAQ");
   const kis = getPublicKisConfig();
   const valuation = strategyValuation();
-  return NextResponse.json({
+  return apiJson({
     success: true,
     data: {
       strategy: {

@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { NextResponse } from "next/server";
 import {
   computeSafetyMode,
   getOrderDecision,
@@ -10,7 +9,9 @@ import {
   usRegularHoursDescriptionKo,
 } from "@/lib/market-hours";
 import { state } from "@/lib/store";
+import { dashboardTokenConfigured } from "@/lib/dashboard-auth";
 import { isLocalRequest } from "@/lib/local-request";
+import { apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +33,16 @@ export async function GET(request: Request) {
   const overseasDecision = getOrderDecision("US_NASDAQ");
   const effectiveSafetyMode = computeSafetyMode();
 
-  return NextResponse.json({
+  const tokenConfigured = dashboardTokenConfigured();
+  return apiJson({
     success: true,
     runtime: process.env.NODE_ENV === "production" ? "production" : "local",
     // Remote (phone/LAN/Tailscale) viewers are read-only; see lib/local-request.
     access: { localClient: isLocalRequest(request) },
+    auth: {
+      tokenConfigured,
+      remoteUnprotected: !tokenConfigured,
+    },
     database: {
       connected: true,
       provider: "encrypted-local-fallback",

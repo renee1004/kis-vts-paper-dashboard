@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { apiJson } from "@/lib/api-response";
 import type { TradingMarket } from "@/lib/domain";
 import { dryRunExit } from "@/lib/vts-execution";
 
@@ -16,14 +16,14 @@ export async function GET(request: Request) {
   const times = (url.searchParams.get("times") ?? "").split(",").filter(Boolean);
   const recentLow = Number(url.searchParams.get("recentLow"));
   if (!["DOMESTIC", "US_NASDAQ"].includes(market) || !stockCode || (!prices.length && !closes.length))
-    return NextResponse.json({ success: false, error: "market, code and prices(+times ISO) or closes required" }, { status: 400 });
+    return apiJson({ success: false, error: "market, code and prices(+times ISO) or closes required" }, { status: 400 });
   const results = [];
   for (const time of times.length ? times : [new Date().toISOString()]) {
     const at = new Date(time);
-    if (!Number.isFinite(at.getTime())) return NextResponse.json({ success: false, error: "INVALID_TIME" }, { status: 400 });
+    if (!Number.isFinite(at.getTime())) return apiJson({ success: false, error: "INVALID_TIME" }, { status: 400 });
     for (const price of prices) results.push(dryRunExit({ market, stockCode, price, at }));
   }
   for (const close of closes) results.push(dryRunExit({ market, stockCode, price: close, at: new Date(),
     simulatedClose: close, recentLow: recentLow > 0 ? recentLow : undefined }));
-  return NextResponse.json({ success: true, data: { dryRun: true, ordersPlaced: 0, results } });
+  return apiJson({ success: true, data: { dryRun: true, ordersPlaced: 0, results } });
 }
