@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,6 +18,19 @@ export const metadata: Metadata = {
   // iOS Safari/WKWebView (KakaoTalk in-app) data detectors wrap numbers, times and
   // prices in tel:/date links before React hydrates, which breaks hydration.
   formatDetection: { telephone: false, date: false, email: false, address: false },
+  appleWebApp: {
+    capable: true,
+    title: "KIS 모의",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  viewportFit: "cover",
+  themeColor: "#020617",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
