@@ -56,9 +56,27 @@ check('docs name live v2, 30,000,000 KRW capital30m, and port 3939', () => {
   assert.ok(readme.includes('trend-breakout-v2-capital30m-unvalidated'));
   assert.equal(readme.includes('trend-breakout-v1-unvalidated'), false);
   assert.ok(readme.includes('30,000,000원'));
+  assert.ok(readme.includes('4,500,000원'));
   assert.ok(readme.includes('completedBars'));
   assert.equal(review.includes('## 후보 규칙 (trend-breakout-v1-unvalidated)'), false);
   assert.ok(review.includes('## 라이브 규칙 (trend-breakout-v2-capital30m-unvalidated)'));
+  assert.ok(review.includes('4,500,000원'));
+});
+
+check('UI and backtest render live paper capital and order caps, not 300k 1회 copy', () => {
+  const dashboard = fs.readFileSync(path.join(root, 'src/components/dashboard.tsx'), 'utf8');
+  const news = fs.readFileSync(path.join(root, 'src/components/news-research-panel.tsx'), 'utf8');
+  const backtest = fs.readFileSync(path.join(root, 'scripts/backtest.cjs'), 'utf8');
+  for (const src of [dashboard, news]) {
+    assert.equal(src.includes('1회 30만'), false);
+    assert.ok(src.includes('PAPER_CAPITAL_KRW'));
+    assert.ok(src.includes('DAILY_BUY_CAP_KRW'));
+    assert.ok(src.includes('US_ORDER_CAP_USD'));
+    assert.ok(src.includes('marketRiskLimits'));
+  }
+  assert.ok(backtest.includes('PAPER_CAPITAL_KRW'));
+  assert.ok(backtest.includes('DAILY_BUY_CAP_KRW'));
+  assert.equal(/const capital\s*=\s*3_?000_?000/.test(backtest), false);
 });
 
 check('BUY trend side/confidence/stop are unchanged by scorecard conclusions or PSR/WTI', () => {

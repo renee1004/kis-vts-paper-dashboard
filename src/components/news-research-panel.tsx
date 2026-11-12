@@ -4,13 +4,23 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { USD_KRW_SAFETY_RATE } from "@/lib/domain";
 import { matchNews, targetKey, type NewsTarget } from "@/lib/news-model";
 import type { NewsResearchView } from "@/lib/news-research";
+import {
+  DAILY_BUY_CAP_KRW,
+  PAPER_CAPITAL_KRW,
+  US_ORDER_CAP_USD,
+  marketRiskLimits,
+} from "@/lib/trading-limits";
 
 const sideLabel = { BUY: "매수 후보", SELL: "보유분 매도 후보", HOLD: "대기" };
 const relationLabel = { DIRECT: "직접 언급", SECTOR: "업종 연관", MACRO: "거시 참고" };
 const directionLabel = { POSITIVE: "긍정 가설", NEGATIVE: "부정 가설", UNCERTAIN: "방향 미확인" };
 const clock = (value: string | null) => value ? new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "미수집";
+const krw = (value: number) => value.toLocaleString("ko-KR");
+const domesticOrderCapKrw = marketRiskLimits("DOMESTIC").orderCapKrw;
+const usNamePct = Math.round(marketRiskLimits("US_NASDAQ").nameFraction * 100);
 export function NewsResearchPanel({ targets, running }: { targets: NewsTarget[]; running: boolean }) {
   const [data, setData] = useState<NewsResearchView | null>(null);
   const [error, setError] = useState("");
@@ -57,7 +67,7 @@ export function NewsResearchPanel({ targets, running }: { targets: NewsTarget[];
                 <TableCell>{book.returnPct == null ? "—" : `${book.returnPct.toFixed(2)}%`}</TableCell><TableCell>{book.maxDrawdownPct.toFixed(2)}%</TableCell><TableCell>{book.fills} / {book.closedLots}</TableCell><TableCell>{book.holdings} / {book.pending}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        <p className="text-xs text-slate-500">관찰 시작 {clock(data.startedAt)} KST · {data.observations.toLocaleString()}회 종목 관찰(독립 거래 수 아님). 계좌 초기잔고와 같은 금액인 각 3,000만 원으로 새 가상 비교를 시작합니다. 기존 300만 원 비교 원장은 별도 보존합니다. 미국 1회 3,000달러·종목당 15%, 하루 합산 450만 원. 환율 1,500원 고정, 편도 비용 0.15% + 불리한 체결 0.10%. 신호 생성 후 최소 30초가 지난 다음 관측 가격으로 가상 체결합니다. 달력에 수록된 휴장·조기폐장을 적용하지만 실제 체결 가능 물량은 재현하지 않는 추정이며 실제 계좌 성과가 아닙니다.</p>
+        <p className="text-xs text-slate-500">관찰 시작 {clock(data.startedAt)} KST · {data.observations.toLocaleString()}회 종목 관찰(독립 거래 수 아님). 계좌 초기잔고와 같은 금액인 각 {krw(PAPER_CAPITAL_KRW)}원으로 새 가상 비교를 시작합니다. 기존 300만 원 비교 원장은 별도 보존합니다. 국내 1회 {krw(domesticOrderCapKrw)}원·미국 1회 {US_ORDER_CAP_USD.toLocaleString("ko-KR")}달러·종목당 {usNamePct}%, 하루 합산 {krw(DAILY_BUY_CAP_KRW)}원. 환율 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원 고정, 편도 비용 0.15% + 불리한 체결 0.10%. 신호 생성 후 최소 30초가 지난 다음 관측 가격으로 가상 체결합니다. 달력에 수록된 휴장·조기폐장을 적용하지만 실제 체결 가능 물량은 재현하지 않는 추정이며 실제 계좌 성과가 아닙니다.</p>
         <div className="overflow-x-auto"><Table>
           <TableHeader><TableRow><TableHead>종목 / 뉴스 열기</TableHead><TableHead>가격 전략</TableHead><TableHead>뉴스 추가 전략</TableHead><TableHead>판단 근거</TableHead><TableHead>판단 시각 (KST)</TableHead></TableRow></TableHeader>
           <TableBody>{targets.map((t) => {

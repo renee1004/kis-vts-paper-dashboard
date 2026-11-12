@@ -38,6 +38,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { VTS_BASE_URL } from "@/lib/domain";
+import {
+  DAILY_BUY_CAP_KRW,
+  PAPER_CAPITAL_KRW,
+  US_ORDER_CAP_USD,
+  marketRiskLimits,
+} from "@/lib/trading-limits";
 import { NewsResearchPanel } from "@/components/news-research-panel";
 import { MarketComparisonPanel } from "@/components/market-comparison-panel";
 import { ScorecardPanel } from "@/components/scorecard-panel";
@@ -221,6 +227,10 @@ function formatPrice(value: number | null, currency: string): string {
   }
   return `${value.toLocaleString()}원`;
 }
+
+const krw = (value: number) => value.toLocaleString("ko-KR");
+const domesticOrderCapKrw = marketRiskLimits("DOMESTIC").orderCapKrw;
+const usNamePct = Math.round(marketRiskLimits("US_NASDAQ").nameFraction * 100);
 
 function WatchlistEditor({
   market,
@@ -508,7 +518,7 @@ export function Dashboard() {
             <CardDescription>완료된 65개 이상 일봉으로 추세·돌파를 확인합니다. 매수는 하루 동일 신호 1회, 추가 매수 없이 진행합니다.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p>계좌 초기잔고 기준 3,000만 원(사용자 확인) · 국내 1회 30만 원 / 미국 1회 3,000달러 · 최대 5종목 · 전체 투자 비중 최대 50%</p>
+            <p>계좌 초기잔고 기준 {krw(PAPER_CAPITAL_KRW)}원(사용자 확인) · 국내 1회 {krw(domesticOrderCapKrw)}원 / 미국 1회 {US_ORDER_CAP_USD.toLocaleString("ko-KR")}달러 · 최대 5종목 · 전체 투자 비중 최대 50%</p>
             <p>앱 거래 기준 추정 손익: {data.agent.strategy?.estimatedPnlKrw == null
               ? "체결가·잔고 확인 필요"
               : `${Math.round(data.agent.strategy.estimatedPnlKrw).toLocaleString()}원 (${data.agent.strategy.estimatedReturnPct?.toFixed(2)}%)`}</p>
@@ -529,7 +539,7 @@ export function Dashboard() {
           </AlertTitle>
           <AlertDescription>
             활성화하면 KIS VTS 모의계좌에 국내·미국(NASDAQ) 모의주문을
-            제출합니다. 하루 합산 신규 매수 최대 450만 원입니다. 국내 1회 최대 30만 원, 미국 1회 최대 3,000달러·미국 종목당 초기잔고의 15%입니다. 미국 주문 전 KIS 주문가능금액·수량을 확인합니다.
+            제출합니다. 하루 합산 신규 매수 최대 {krw(DAILY_BUY_CAP_KRW)}원입니다. 국내 1회 최대 {krw(domesticOrderCapKrw)}원, 미국 1회 최대 {US_ORDER_CAP_USD.toLocaleString("ko-KR")}달러·미국 종목당 초기잔고의 {usNamePct}%입니다. 미국 주문 전 KIS 주문가능금액·수량을 확인합니다.
             변동성에 따라 진입 시 3~8% 손절 기준을 정하고, +10% 부분 익절은 보유 회차당 한 번,
             +20%에서는 잔여 수량을 매도합니다. 손절가는 체결 보장 가격이 아닙니다.
             실전 호스트는 차단되며, 이 앱의 체결로 확인한 보유 수량만 매도합니다.
@@ -825,7 +835,7 @@ export function Dashboard() {
                   <p className="text-xs text-slate-500">
                     최대 {data.limits.maxPositions ?? 5}종목 · 국내 종목당{" "}
                     {Math.round((data.limits.maxNameFraction ?? 0.10) * 100)}% 이하 ·
-                    미국 종목당 15% 이하 · 계좌 초기잔고 기준 {(data.limits.principalKrw ?? 30000000).toLocaleString()}원
+                    미국 종목당 {usNamePct}% 이하 · 계좌 초기잔고 기준 {krw(data.limits.principalKrw ?? PAPER_CAPITAL_KRW)}원
                   </p>
                 )}
               </CardContent>
