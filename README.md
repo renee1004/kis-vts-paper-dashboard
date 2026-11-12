@@ -1,12 +1,19 @@
 # KIS VTS 모의 자동매매 대시보드
 
-현재 라이브 모의주문 전략은 `trend-breakout-v2-capital30m-unvalidated`입니다.
+현재 라이브 모의주문 전략은 `trend-breakout-v2-capital30m-unvalidated`입니다
+(`src/lib/strategy.ts`의 `STRATEGY_VERSION` / `DECISION_ENGINE_VERSION`).
 5관점 점수판, PSR·WTI 참고값, 거래일 달력 교차검증, 집중도·위험기여 패널은 화면·연구 전용이며 주문 방향·수량·제출 여부에 쓰지 않습니다.
 수익을 보장하거나 화면 점수를 승률로 해석하지 않습니다.
 이번 변경의 매매 규칙·위험 한도·원장 및 검사 방법은
 [전략 점검 문서](docs/STRATEGY-REVIEW.md)를 기준으로 확인하세요.
-전략 배정 예산 300만 원, 1회 기준금액 30만 원, 최대 5종목이며
-체결가/원장 확인이 안 된 경우 신규 매수가 차단될 수 있습니다.
+
+자본 기준은 **30,000,000원**(3,000만 원)입니다
+(`PAPER_CAPITAL_KRW` / `INITIAL_ACCOUNT_BALANCE_KRW`).
+버전 id의 `capital30m`은 이 3,000만 원 기준을 가리키는 **고정 식별자**이며
+3,000,000원(300만 원)이 아닙니다. 이 문자열은 상태·cutover 파일에 저장되어 있어
+바꾸지 않습니다. 국내 1회 주문 상한 **3,000,000원**, 미국 1회 **3,000달러**,
+하루 신규 매수 합산 **4,500,000원**(`DAILY_BUY_CAP_KRW` = 3,000×1,500원),
+최대 5종목이며 체결가/원장 확인이 안 된 경우 신규 매수가 차단될 수 있습니다.
 
 한국투자증권 모의투자(VTS)의 국내·미국(NASDAQ) 시세·캔들·잔고를 조회하고,
 전략 신호가 안전 규칙을 통과하면 KIS VTS 모의계좌에 주문을 제출하는
@@ -26,8 +33,8 @@
 - 주문 가능 시간: **미국 동부시간(ET) 평일 09:30–16:00** 정규장.
   한국 오전 9:30이 아닙니다. 한국시간은 서머타임이면 보통 **22:30–다음날 05:00**,
   표준시면 **23:30–다음날 06:00**입니다.
-- 일일 매수 한도 **300만 원**은 국내 매수와 합산 (미국은 **1 USD = 1,500 KRW**
-  보수 환율로 환산). 1회 주문 상한 **30만 원** 동일.
+- 일일 매수 한도 **4,500,000원**(3,000 USD × 1,500원)은 국내 매수와 합산.
+  국내 1회 주문 상한 **3,000,000원**, 미국 1회 **3,000달러**.
 
 ## 안전 기본값
 
@@ -104,18 +111,23 @@ git에서 제외됩니다.
 4. `VTS 모의 자동주문 활성화` — 명시적 확인값과 함께 `VTS_AUTO_ARMED`
 5. 에이전트 시작
 
-에이전트는 1분마다 국내·미국 관심종목을 분석합니다. 매수는 한국 날짜 기준
-**하루 300만 원**(국내+미국 합산, 미국은 1 USD=1,500원 환산)까지이며, 1회
-주문은 기준가×수량 **30만 원 이하**입니다. 같은 시장·종목의 미체결 주문이나
-자동매매 소유 수량이 있으면 중복 매수하지 않습니다. 매도 전에는 KIS
-체결조회로 이 앱의 주문번호가 체결됐는지 확인합니다.
+에이전트는 **60초마다** 국내·미국 관심종목을 다시 조회합니다. 추세·돌파 신호는
+분봉이 아니라 KIS **완료 일봉**만 사용합니다(`completedBars`가 해당 시장 날짜의
+형성 중인 봉을 제외). 1분 루프가 당일 미완료 봉을 신호로 확정하는 것이 아니라,
+전일까지 닫힌 일봉 규칙을 매 주기 다시 평가합니다. 같은 완료 일자의 매수 신호는
+한 번만 사용합니다. 장중 현재가는 신호 종가 ±2% 괴리 검사와 손절·익절에 씁니다.
+매수는 한국 날짜 기준 **하루 4,500,000원**(국내+미국 합산, 미국은 1 USD=1,500원
+환산)까지이며, 국내 1회는 기준가×수량 **3,000,000원 이하**, 미국 1회
+**3,000달러 이하**입니다. 같은 시장·종목의 미체결 주문이나 자동매매 소유
+수량이 있으면 중복 매수하지 않습니다. 매도 전에는 KIS 체결조회로 이 앱의
+주문번호가 체결됐는지 확인합니다.
 
 ## 상태 확인
 
 ```bash
-curl http://localhost:3000/api/system/local-health
-curl http://localhost:3000/api/agent/status
-curl http://localhost:3000/api/vts-orders
+curl http://localhost:3939/api/system/local-health
+curl http://localhost:3939/api/agent/status
+curl http://localhost:3939/api/vts-orders
 ```
 
 실전 서버 호출 여부는 대시보드의 `Real fallback=false`와
@@ -141,7 +153,7 @@ curl http://localhost:3000/api/vts-orders
 ARM 요청:
 
 ```bash
-curl -X POST http://localhost:3000/api/settings/vts-paper-arm \
+curl -X POST http://localhost:3939/api/settings/vts-paper-arm \
   -H 'content-type: application/json' \
   -d '{"action":"ARM","confirm":"ARM_VTS_AUTO_ONLY"}'
 ```
@@ -150,7 +162,7 @@ Cleanup은 아래 확인문이 정확히 일치할 때 `TradeHistory`와 `AgentL
 삭제합니다.
 
 ```bash
-curl -X POST http://localhost:3000/api/system/cleanup-trade-history \
+curl -X POST http://localhost:3939/api/system/cleanup-trade-history \
   -H 'content-type: application/json' \
   -d '{"confirm":"RESET_TRADE_AND_LOG_HISTORY"}'
 ```
