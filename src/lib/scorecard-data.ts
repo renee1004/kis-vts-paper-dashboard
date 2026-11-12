@@ -136,11 +136,15 @@ export interface DecisionEngineCutover {
   scorecardVersion?: string;
   note?: string;
 }
+function isDecisionEngineCutover(value: unknown): value is DecisionEngineCutover {
+  if (!value || typeof value !== "object") return false;
+  const rec = value as Record<string, unknown>;
+  return typeof rec.version === "string"
+    && typeof rec.cutoverAt === "string"
+    && typeof rec.previousVersion === "string";
+}
 function asCutover(v: unknown): DecisionEngineCutover | null {
-  if (!v || typeof v !== "object") return null;
-  const rec = v as Record<string, unknown>;
-  if (typeof rec.version !== "string" || typeof rec.cutoverAt !== "string") return null;
-  return rec as DecisionEngineCutover;
+  return isDecisionEngineCutover(v) ? v : null;
 }
 /**
  * Live-engine marker. After the 2026-11-06 scorecard cutover this records the restore
