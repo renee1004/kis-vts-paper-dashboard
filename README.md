@@ -1,7 +1,7 @@
 # KIS VTS 모의 자동매매 대시보드
 
 현재 라이브 모의주문 전략은 `trend-breakout-v2-capital30m-unvalidated`입니다.
-5관점 점수판과 PSR·WTI 참고값은 화면·연구 전용이며 주문 방향·수량·제출 여부에 쓰지 않습니다.
+5관점 점수판, PSR·WTI 참고값, 거래일 달력 교차검증, 집중도·위험기여 패널은 화면·연구 전용이며 주문 방향·수량·제출 여부에 쓰지 않습니다.
 수익을 보장하거나 화면 점수를 승률로 해석하지 않습니다.
 이번 변경의 매매 규칙·위험 한도·원장 및 검사 방법은
 [전략 점검 문서](docs/STRATEGY-REVIEW.md)를 기준으로 확인하세요.
@@ -157,6 +157,26 @@ curl -X POST http://localhost:3000/api/system/cleanup-trade-history \
 
 `Position`, VTS 주문, 자동매매 소유 수량, KIS 설정, 안전 설정, 관심종목은
 삭제하지 않습니다.
+
+## 연구 데이터 수집 (주문 없음)
+
+점수판·달력 교차검증·위험기여 JSON은 git에 넣지 않는 `.data/`에만 씁니다.
+
+```bash
+python3 -m venv .venv-data
+.venv-data/bin/pip install -r scripts/requirements-data.txt
+.venv-data/bin/python scripts/scorecard-collect.py
+```
+
+추가 패키지: `exchange_calendars==4.13.2`(Apache-2.0, 휴장일 대조), `skfolio`(BSD-3-Clause, 위험기여).
+주문 게이트는 이 패키지를 쓰지 않습니다. 네트워크 없이 논리 확인:
+
+```bash
+.venv-data/bin/python scripts/calendar-crosscheck.py --self-check
+.venv-data/bin/python scripts/risk-contribution.py --self-check
+```
+
+문서: [점수판](docs/scorecard.md), [거래일 달력](docs/market-calendar.md), [집중도·위험기여](docs/risk-contribution.md).
 
 ## 설계 문서
 

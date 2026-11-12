@@ -41,6 +41,7 @@ import { VTS_BASE_URL } from "@/lib/domain";
 import { NewsResearchPanel } from "@/components/news-research-panel";
 import { MarketComparisonPanel } from "@/components/market-comparison-panel";
 import { ScorecardPanel } from "@/components/scorecard-panel";
+import { RiskContributionPanel } from "@/components/risk-contribution-panel";
 
 interface DashboardData {
   health: {
@@ -90,6 +91,7 @@ interface DashboardData {
       overseasOrderBlockedReason: string | null;
       usMarketStatus: string;
       usMarketHoursKo?: string;
+      calendarMismatches?: string[];
     };
     positions: Array<Record<string, string | number>>;
     overseasPositions: Array<Record<string, string | number>>;
@@ -546,7 +548,25 @@ export function Dashboard() {
           </Alert>
         )}
 
-        <ScorecardPanel />
+        {(data.agent.runtimeDecision.calendarMismatches ?? []).length > 0 && (
+          <Alert className="border-amber-300 bg-amber-50">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>달력 불일치 (표시·연구 전용, 주문 게이트 아님)</AlertTitle>
+            <AlertDescription>
+              {(data.agent.runtimeDecision.calendarMismatches ?? []).slice(0, 4).map((line) => (
+                <p key={line} className="font-mono text-xs">{line}</p>
+              ))}
+              {(data.agent.runtimeDecision.calendarMismatches ?? []).length > 4 && (
+                <p>외 {(data.agent.runtimeDecision.calendarMismatches ?? []).length - 4}건 · 점수판에서 전체 확인</p>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <section className="grid gap-4 xl:grid-cols-2">
+          <ScorecardPanel />
+          <RiskContributionPanel />
+        </section>
         <MarketComparisonPanel />
         <NewsResearchPanel running={data.agent.isRunning} targets={[
           ...data.agent.watchlist.map((item) => ({ market: "DOMESTIC" as const, stockCode: String(item.stockCode), stockName: String(item.stockName) })),
@@ -932,6 +952,12 @@ export function Dashboard() {
                       "ET 09:30–16:00 (not KST 09:30)",
                   ],
                   ["Real fallback", "false"],
+                  [
+                    "Calendar check",
+                    (data.agent.runtimeDecision.calendarMismatches ?? []).length
+                      ? `mismatch ${(data.agent.runtimeDecision.calendarMismatches ?? []).length}`
+                      : "표시·연구 전용",
+                  ],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-3">
                     <span className="text-slate-500">{label}</span>

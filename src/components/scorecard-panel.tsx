@@ -46,10 +46,24 @@ function ReferenceNotes({ psr, crudeOil }: { psr?: PsrReference; crudeOil: Crude
   </div>;
 }
 
+function CalendarMismatchWarning({ messages, stale, unavailable }: { messages: string[]; stale: boolean; unavailable: boolean }) {
+  if (stale) {
+    return <p role="status" className="rounded-md border border-dashed p-2 text-sm text-muted-foreground">달력 대조 자료가 오래되어 미확인입니다. 주문 게이트는 바꾸지 않습니다.</p>;
+  }
+  if (!unavailable && !messages.length) return null;
+  return <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-2 space-y-1 text-sm">
+    <p className="font-medium">달력 불일치 (표시·연구 전용, 주문 게이트 아님)</p>
+    {unavailable && <p className="text-sm">달력 대조 실패 (미확인). 주문 게이트는 바꾸지 않습니다.</p>}
+    {messages.slice(0, 8).map((line) => <p key={line} className="font-mono text-xs">{line}</p>)}
+    {messages.length > 8 && <p className="text-xs text-muted-foreground">외 {messages.length - 8}건</p>}
+  </div>;
+}
+
 export function ScorecardPanel() {
   const [cards, setCards] = useState<StoredScorecard[]>([]);
   const [cutover, setCutover] = useState<{ cutoverAt: string; previousVersion: string; version?: string; scorecardVersion?: string } | null>(null);
   const [crudeOil, setCrudeOil] = useState<CrudeOilReference | null>(null);
+  const [calendar, setCalendar] = useState<{ messages: string[]; stale: boolean; unavailable: boolean }>({ messages: [], stale: false, unavailable: false });
   const [selected, setSelected] = useState<string>("");
   const [chart, setChart] = useState<Chart>(null);
   const [error, setError] = useState("");
@@ -61,7 +75,13 @@ export function ScorecardPanel() {
         const result = await (await fetch(`/api/scorecard${query}`, { cache: "no-store" })).json();
         if (!result.success) throw new Error(result.error);
         setCards(result.data.cards); setCutover(result.data.cutover); setChart(result.data.chart);
-        setCrudeOil(result.data.crudeOil ?? null); setError("");
+        setCrudeOil(result.data.crudeOil ?? null);
+        setCalendar({
+          messages: result.data.calendarCrosscheck?.messages ?? [],
+          stale: !!result.data.calendarCrosscheck?.stale,
+          unavailable: !!result.data.calendarCrosscheck?.unavailable,
+        });
+        setError("");
       } catch (cause) { setError(cause instanceof Error ? cause.message : "점수판 조회 실패"); }
     };
     const first = setTimeout(() => void load(), 0), timer = setInterval(() => void load(), 30_000);
@@ -74,6 +94,7 @@ export function ScorecardPanel() {
         {cutover && ` 라이브 엔진: ${cutover.version ?? "trend-breakout-v2"} · 복원 ${new Date(cutover.cutoverAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (점수판 ${cutover.scorecardVersion ?? cutover.previousVersion}은 표시 전용)`}</CardDescription></CardHeader>
     <CardContent className="space-y-3">
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <CalendarMismatchWarning messages={calendar.messages} stale={calendar.stale} unavailable={calendar.unavailable} />
       <ReferenceNotes psr={card?.references?.psr} crudeOil={crudeOil} />
       {!cards.length && <p className="text-sm text-muted-foreground">분석 사이클 실행 후 표시됩니다.</p>}
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left">

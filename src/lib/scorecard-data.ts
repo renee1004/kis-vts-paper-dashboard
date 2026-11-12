@@ -71,6 +71,44 @@ export function writeScorecardUniverse(targets: { market: TradingMarket; stockCo
     fs.writeFileSync(path.join(root(), "scorecard-universe.json"), JSON.stringify(targets.map(({ market, stockCode, stockName }) => ({ market, stockCode, stockName }))), { mode: 0o600 });
   } catch { /* collector falls back to CLI args */ }
 }
+
+type ResearchHoldingRow = {
+  stockCode: string; stockName: string; evaluation: number; currency?: string; lastSyncedAt?: string;
+};
+
+/** Holdings snapshot for research risk-contribution (evaluation only; no account numbers).
+ * Only markets that synced this cycle are written, so a failed balance fetch cannot
+ * stamp retained positions with a fresh generatedAt. */
+export function writeResearchHoldings(input: {
+  domestic: ResearchHoldingRow[];
+  overseas: ResearchHoldingRow[];
+  usdKrw: number;
+  domesticSynced: boolean;
+  overseasSynced: boolean;
+}): boolean {
+  if (!input.domesticSynced && !input.overseasSynced) return false;
+  try {
+    const map = (row: ResearchHoldingRow, market: "DOMESTIC" | "US_NASDAQ", currency: "KRW" | "USD", evaluationKrw: number) => ({
+      market, stockCode: row.stockCode, stockName: row.stockName, evaluation: row.evaluation, currency, evaluationKrw,
+      lastSyncedAt: row.lastSyncedAt ?? null,
+    });
+    const holdings = [
+      ...(input.domesticSynced ? input.domestic.map((row) => map(row, "DOMESTIC", "KRW", row.evaluation)) : []),
+      ...(input.overseasSynced ? input.overseas.map((row) => map(row, "US_NASDAQ", "USD", row.evaluation * input.usdKrw)) : []),
+    ].filter((row) => Number.isFinite(row.evaluationKrw) && row.evaluationKrw > 0 && /^[A-Z0-9.]{1,20}$/i.test(row.stockCode));
+    fs.mkdirSync(root(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(root(), "research-holdings.json"), JSON.stringify({
+      version: 1, generatedAt: new Date().toISOString(), usdKrw: input.usdKrw,
+      fxSource: "FIXED_1500_NOT_ACTUAL_FX",
+      syncedMarkets: [
+        ...(input.domesticSynced ? ["DOMESTIC"] as const : []),
+        ...(input.overseasSynced ? ["US_NASDAQ"] as const : []),
+      ],
+      holdings,
+    }), { mode: 0o600 });
+    return true;
+  } catch { return false; }
+}
 const calendarSchema = z.object({
   fomc: z.object({ verifiedFrom: z.string(), verifiedThrough: z.string(), blackout: z.object({ DOMESTIC: z.array(z.string()), US_NASDAQ: z.array(z.string()) }) }),
   earnings: z.record(z.string(), z.object({ verifiedThrough: z.string(), dates: z.array(z.string()), source: z.string().optional() })),

@@ -12,6 +12,8 @@
 - `chk-holiday`는 공식 샘플에서 `opnd_yn`와 가급적 하루 한 번 조회를 설명하지만, VTS 지원을 확인하지 못했다. 실전 키/실전 서버 우회를 추가하지 않는다.
 - 데이터 출처와 버전, 범위, 양 시장 당일 시간은 status API에 노출한다. 별도 주문전송 기능은 추가하지 않는다.
 - `docs/third-party/exchange-calendars-LICENSE.txt`에 상류 Apache-2.0 라이선스를 포함한다.
+- **표시·연구 전용 교차검증:** 수집기 사이드카 `scripts/calendar-crosscheck.py`가 대시보드 스냅샷(거래일/미확인/휴장)을 같은 패키지의 XKRX·XNYS와 과거 30일~이후 90일 구간에서 비교한다. 불일치는 `.data/calendar-crosscheck.json`에 기록되고 점수판·상태 영역에 `calendar mismatch: <date> dashboard=closed, XKRX=open` 형식으로만 경고한다. 패키지 미설치·캘린더 로드 실패는 빈 성공이 아니라 `calendar mismatch: 대조 실패 (미확인)`으로 표시한다. **주문 게이트는 `marketSession` / `isDomesticRegularMarketOpen` / `isUsRegularMarketOpen`을 그대로 쓰며 exchange_calendars로 바꾸지 않는다.**
+- `isOpen`은 **지금 정규장 세션 안인지**이지, 그날 거래일 여부가 아니다. 거래일이어도 09:00 전·15:30 이후 KST에는 국내 `isOpen=false`가 맞다. 예: 2026-11-09(월)은 대시보드·XKRX 모두 정규 거래일이며, 장중(예: 10:00 KST) `isOpen=true`, 16:40 KST에는 `isOpen=false`이다.
 
 출처:
 

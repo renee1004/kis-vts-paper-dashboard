@@ -1,0 +1,7 @@
+# Research collector environment (.venv-data). Display/research only.
+# Never imported by the Next.js order path. Do not run with broker keys.
+finance-datareader
+pykrx
+yfinance
+exchange_calendars==4.13.2
+skfolio
