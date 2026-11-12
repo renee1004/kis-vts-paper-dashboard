@@ -1,6 +1,6 @@
 import { apiJson } from "@/lib/api-response";
 import { state } from "@/lib/store";
-import { todayBuyNotional, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
+import { rollingBuyNotional24h, todayBuyNotional, VTS_ORDER_LIMITS } from "@/lib/vts-execution";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,7 @@ export async function GET() {
       orders: state.vtsOrders,
       agentOwnedPositions: state.agentOwnedPositions,
       limits: VTS_ORDER_LIMITS,
+      rollingBuyNotional24h: rollingBuyNotional24h(),
       todayBuyNotional: todayBuyNotional(),
       blockedReasonCounts: state.vtsOrders
         .filter((order) => order.status === "BLOCKED" && order.blockedReason)

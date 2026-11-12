@@ -28,6 +28,18 @@ import {
   WatchlistItem,
 } from "@/lib/domain";
 
+export interface StrategyPnlSnapshot {
+  at: number;
+  hour: number;
+  pnl: number;
+}
+
+export interface StrategyRiskState {
+  date?: string;
+  startPnl?: number;
+  pnlSnapshots: StrategyPnlSnapshot[];
+}
+
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const KEY_FILE = path.join(DATA_DIR, "master.key");
@@ -48,7 +60,7 @@ export const DEFAULT_WATCHLIST: Array<[string, string]> = [
 
 interface RuntimeState {
   performanceHistory: PerformancePoint[];
-  strategyRisk: { date: string; startPnl: number };
+  strategyRisk: StrategyRiskState;
   isRunning: boolean;
   sessionId: string | null;
   settings: SafetySettings;
@@ -112,7 +124,7 @@ function initialUsWatchlist(): WatchlistItem[] {
 function initialState(): RuntimeState {
   return {
     performanceHistory: [],
-    strategyRisk: { date: "", startPnl: 0 },
+    strategyRisk: { date: "", startPnl: 0, pnlSnapshots: [] },
     isRunning: false,
     sessionId: null,
     settings: { ...DEFAULT_SAFETY_SETTINGS },
@@ -212,6 +224,32 @@ function migrateVtsOrder(order: Partial<VtsOrder> & Pick<VtsOrder, "id" | "stock
     signalDate: order.signalDate,
     importSource: order.importSource,
     brokerError: order.brokerError,
+    limitBasis: order.limitBasis === "ROLLING_24H" ? "ROLLING_24H" : "KST_DATE",
+  };
+}
+
+function migratePnlSnapshots(raw: unknown): StrategyPnlSnapshot[] {
+  if (!Array.isArray(raw)) return [];
+  const snapshots: StrategyPnlSnapshot[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as { at?: unknown; hour?: unknown; pnl?: unknown };
+    const at = Number(rec.at);
+    const pnl = Number(rec.pnl);
+    if (!Number.isFinite(at) || !Number.isFinite(pnl)) continue;
+    const hour = Number.isFinite(Number(rec.hour)) ? Number(rec.hour) : Math.floor(at / 3600_000);
+    snapshots.push({ at, hour, pnl });
+  }
+  return snapshots;
+}
+
+function migrateStrategyRisk(raw: unknown): StrategyRiskState {
+  const rec = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const startPnl = Number(rec.startPnl);
+  return {
+    date: typeof rec.date === "string" ? rec.date : "",
+    startPnl: Number.isFinite(startPnl) ? startPnl : 0,
+    pnlSnapshots: migratePnlSnapshots(rec.pnlSnapshots),
   };
 }
 
@@ -273,7 +311,7 @@ function migrateRuntimeState(parsed: Partial<RuntimeState>): RuntimeState {
   return {
     ...base,
     ...parsed,
-    strategyRisk: parsed.strategyRisk ?? base.strategyRisk,
+    strategyRisk: migrateStrategyRisk(parsed.strategyRisk),
     performanceHistory: Array.isArray(parsed.performanceHistory) ? parsed.performanceHistory : [],
     isRunning: false,
     sessionId: null,
@@ -334,6 +372,9 @@ globalState.__vtsPaperState = state;
 // A state object created before this field existed (dev hot reload) must still be usable.
 state.stopOverrides ??= [];
 state.performanceHistory ??= [];
+state.strategyRisk ??= { date: "", startPnl: 0, pnlSnapshots: [] };
+state.strategyRisk.pnlSnapshots ??= [];
+for (const order of state.vtsOrders) order.limitBasis ??= "KST_DATE";
 // Same for watchlist source labels and name corrections on a hot-reloaded state.
 for (const item of state.watchlist) {
   item.source ??= defaultSource("DOMESTIC", item.stockCode);

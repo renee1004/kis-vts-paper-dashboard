@@ -2,7 +2,7 @@ import "server-only";
 import type { VtsOrder } from "@/lib/domain";
 import { ownedLot } from "@/lib/ownership";
 import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
-import { strategyValuation } from "@/lib/vts-execution";
+import { recordStrategyPnlSnapshot, strategyValuation } from "@/lib/vts-execution";
 import { findStopOverride, REBASE_STOP_FRACTION, rebasedStopPrice, REBASED_TREND_RULE, type StopOverride } from "@/lib/stop-rebase";
 
 /**
@@ -59,6 +59,7 @@ export function pre0911ImportRows(): VtsOrder[] {
     ownershipScope: "AGENT_CREATED_ONLY", averageFillPrice: amount / quantity,
     stopFraction: side === "BUY" ? LEGACY_STOP_FRACTION : undefined,
     strategyVersion: "legacy-dashboard-pre-0911", importSource: PRE_0911_IMPORT_SOURCE,
+    limitBasis: "KST_DATE",
   }));
 }
 
@@ -85,9 +86,8 @@ export function applyPre0911Import() {
   if (preview.lots.some((lot) => !lot.fits)) throw new Error("IMPORT_EXCEEDS_BROKER_HOLDING");
   state.vtsOrders.push(...pre0911ImportRows());
   rebuildAgentOwnedPositions();
-  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10).replaceAll("-", "");
-  // Historical P&L of imported lots is not today's loss: re-baseline the daily loss check.
-  if (state.strategyRisk.date === today) state.strategyRisk.startPnl = strategyValuation().pnl;
+  // Historical P&L of imported lots is not a rolling-window loss: snapshot current pnl as the peak floor.
+  recordStrategyPnlSnapshot(strategyValuation().pnl);
   addLog("RISK", `과거 KIS 체결 ${preview.rowCount}건을 에이전트 보유로 등록 (${PRE_0911_IMPORT_SOURCE})`, "WARN");
   rebaseImportedStops();
   saveState();

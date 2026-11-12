@@ -3,7 +3,7 @@ export const VTS_BASE_URL = "https://openapivts.koreainvestment.com:29443";
 /**
  * Conservative USD→KRW conversion for order limits, name-fraction KRW conversion,
  * shadow/news sizing, and strategy valuation. Not a live FX rate and not used to
- * derive the daily KRW buy cap.
+ * derive the rolling 24h KRW buy cap.
  */
 export const USD_KRW_SAFETY_RATE = 1_400;
 export const FX_ASSUMPTION_SOURCE = "FIXED_1400_NOT_ACTUAL_FX" as const;
@@ -191,6 +191,9 @@ export interface OverseasBalanceSnapshot {
 
 export type VtsOrderType = "MARKET" | "LIMIT";
 
+/** New VTS rows use ROLLING_24H. Orders loaded without the field are tagged KST_DATE. */
+export type LimitBasis = "ROLLING_24H" | "KST_DATE";
+
 export interface VtsOrder {
   id: string;
   timestamp: string;
@@ -234,6 +237,8 @@ export interface VtsOrder {
   /** Set only on rows imported from KIS fill history (auditable, reversible). */
   importSource?: string;
   brokerError?: KisLastError;
+  /** Which buy-cap window this row was recorded under. Amounts are never rewritten on tag. */
+  limitBasis?: LimitBasis;
 }
 
 export interface AgentOwnedPosition {

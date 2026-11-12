@@ -8,7 +8,7 @@ import { rejectionBlock } from "@/lib/order-retry";
 import { evaluatePaperOrder } from "@/lib/rule-engine";
 import { getOrderDecision } from "@/lib/safety";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
-import { addLog, rebuildAgentOwnedPositions, saveState, state } from "@/lib/store";
+import { addLog, rebuildAgentOwnedPositions, saveState, state, type StrategyPnlSnapshot } from "@/lib/store";
 import { isPending, ownedLot, sameKisOrderNo, sellableQuantity } from "@/lib/ownership";
 import { exitDecision, sizeForRisk, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
 
@@ -19,6 +19,10 @@ import { closeBreakdown, findStopOverride, kstMinutes, recentLow, REBASED_TREND_
 const PRINCIPAL_KRW = PAPER_CAPITAL_KRW;
 const DAILY_BUY_CAP = DAILY_BUY_CAP_KRW;
 const MAX_POSITIONS = 5;
+export const ROLLING_LIMIT_WINDOW_MS = 24 * 3600_000;
+const PNL_SNAPSHOT_MARGIN_MS = 2 * 3600_000;
+const PNL_SNAPSHOT_MAX = 30;
+const STRATEGY_LOSS_FRACTION = 0.02;
 const kstDate = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10).replaceAll("-", "");
 const marketDate = (market: TradingMarket) => market === "US_NASDAQ" ? usMarketDate() : kstDate();
 const rate = (market: TradingMarket) => market === "US_NASDAQ" ? USD_KRW_SAFETY_RATE : 1;
@@ -31,10 +35,66 @@ interface ExecuteVtsOrderInput {
   side: "BUY" | "SELL" | "HOLD"; confidence: number; price: number; signalId: string;
   signalDate?: string; stopFraction?: number; trendMa?: number;
 }
-export function todayBuyNotional(): number {
-  return state.vtsOrders.filter((o) => new Date(new Date(o.timestamp).getTime() + 9 * 3600_000)
-    .toISOString().slice(0, 10).replaceAll("-", "") === kstDate())
+function inRollingWindow(ts: number, now: number): boolean {
+  return Number.isFinite(ts) && now - ROLLING_LIMIT_WINDOW_MS < ts && ts <= now;
+}
+
+/** Buy notional (KRW) of VTS orders whose timestamp falls in (now-24h, now]. */
+export function rollingBuyNotional24h(now = Date.now(), orders = state.vtsOrders): number {
+  return orders.filter((o) => inRollingWindow(Date.parse(o.timestamp), now))
     .reduce((sum, order) => sum + buyNotionalKrw(order), 0);
+}
+
+/** @deprecated Same rolling 24h window as rollingBuyNotional24h. */
+export function todayBuyNotional(now = Date.now()): number {
+  return rollingBuyNotional24h(now);
+}
+
+function ensureStrategyRisk() {
+  if (!state.strategyRisk || typeof state.strategyRisk !== "object") {
+    state.strategyRisk = { date: "", startPnl: 0, pnlSnapshots: [] };
+  }
+  if (!Array.isArray(state.strategyRisk.pnlSnapshots)) state.strategyRisk.pnlSnapshots = [];
+  return state.strategyRisk;
+}
+
+/** Hourly (max-per-hour-bucket) P&L snapshots; prunes older than 24h+margin. */
+export function recordStrategyPnlSnapshot(pnl: number, now = Date.now()): StrategyPnlSnapshot[] {
+  if (!Number.isFinite(pnl) || !Number.isFinite(now)) return ensureStrategyRisk().pnlSnapshots;
+  const risk = ensureStrategyRisk();
+  const hour = Math.floor(now / 3600_000);
+  const cutoff = now - ROLLING_LIMIT_WINDOW_MS - PNL_SNAPSHOT_MARGIN_MS;
+  let snapshots = risk.pnlSnapshots.filter((s) => Number.isFinite(s.at) && Number.isFinite(s.pnl) && s.at > cutoff);
+  const idx = snapshots.findIndex((s) => s.hour === hour);
+  let changed = snapshots.length !== risk.pnlSnapshots.length;
+  if (idx >= 0) {
+    if (pnl > snapshots[idx].pnl) {
+      snapshots[idx] = { at: now, hour, pnl };
+      changed = true;
+    }
+  } else {
+    snapshots.push({ at: now, hour, pnl });
+    changed = true;
+  }
+  snapshots.sort((a, b) => a.at - b.at);
+  if (snapshots.length > PNL_SNAPSHOT_MAX) {
+    snapshots = snapshots.slice(-PNL_SNAPSHOT_MAX);
+    changed = true;
+  }
+  if (changed) {
+    risk.pnlSnapshots = snapshots;
+    saveState();
+  }
+  return risk.pnlSnapshots;
+}
+
+/** Block when current pnl is at least 2% of principal below the 24h peak (including current). */
+export function rollingLossExceeded(pnl: number, now = Date.now()): boolean {
+  recordStrategyPnlSnapshot(pnl, now);
+  const peak = Math.max(pnl, ...ensureStrategyRisk().pnlSnapshots
+    .filter((s) => inRollingWindow(s.at, now))
+    .map((s) => s.pnl));
+  return pnl <= peak - PRINCIPAL_KRW * STRATEGY_LOSS_FRACTION;
 }
 function persist(order: VtsOrder): VtsOrder {
   if (!state.vtsOrders.some((o) => o.id === order.id)) state.vtsOrders.unshift(order);
@@ -50,7 +110,8 @@ function makeOrder(input: ExecuteVtsOrderInput, quantity: number): VtsOrder {
     filledQuantity: 0, referencePrice: input.price, orderType: input.market === "DOMESTIC" ? "MARKET" : "LIMIT",
     status: "UNKNOWN", blockedReason: null, kisOrderNo: null, kisBranchNo: null,
     signalId: input.signalId, sessionId: state.sessionId, ownershipScope: "AGENT_CREATED_ONLY",
-    strategyVersion: STRATEGY_VERSION, signalDate: input.signalDate, stopFraction: input.stopFraction };
+    strategyVersion: STRATEGY_VERSION, signalDate: input.signalDate, stopFraction: input.stopFraction,
+    limitBasis: "ROLLING_24H" };
 }
 function blocked(input: ExecuteVtsOrderInput, reason: string): VtsOrder {
   state.lastCycleSummary.vtsOrderFailed += 1;
@@ -95,12 +156,6 @@ export function strategyValuation(): { pnl: number; committed: number; valid: bo
     .reduce((sum, o) => sum + (o.quantity - o.filledQuantity) * o.referencePrice * rate(o.market), 0);
   return { pnl, committed, valid };
 }
-function dailyLossExceeded(pnl: number): boolean {
-  if (state.strategyRisk.date !== kstDate()) {
-    state.strategyRisk = { date: kstDate(), startPnl: pnl }; saveState();
-  }
-  return pnl - state.strategyRisk.startPnl <= -PRINCIPAL_KRW * 0.02;
-}
 export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVtsOrderInput): Promise<VtsOrder | null> {
   if (input.side === "HOLD") return null;
   const gate = evaluatePaperOrder(input);
@@ -140,9 +195,9 @@ export async function executeVtsMockOrder(client: KisVtsClient, input: ExecuteVt
   if (heldKeys.size >= MAX_POSITIONS) return blocked(input, "MAX_POSITIONS");
   const valuation = strategyValuation();
   if (!valuation.valid) return blocked(input, "STRATEGY_LEDGER_NEEDS_VERIFIED_FILLS");
-  if (valuation.pnl <= -PRINCIPAL_KRW * 0.20 || dailyLossExceeded(valuation.pnl)) return blocked(input, "STRATEGY_LOSS_LIMIT");
+  if (valuation.pnl <= -PRINCIPAL_KRW * 0.20 || rollingLossExceeded(valuation.pnl)) return blocked(input, "STRATEGY_LOSS_LIMIT");
   let quantity = sizeForRisk({ budget: PRINCIPAL_KRW, price: input.price * rate(input.market), stopFraction: input.stopFraction,
-    committed: valuation.committed, dailyRemaining: DAILY_BUY_CAP - todayBuyNotional() }, input.market);
+    committed: valuation.committed, dailyRemaining: DAILY_BUY_CAP - rollingBuyNotional24h() }, input.market);
   if (input.market === "DOMESTIC") {
     const pending = state.vtsOrders.filter((o) => o.market === "DOMESTIC" && o.side === "BUY" && isPending(o))
       .reduce((sum, o) => sum + (o.quantity - o.filledQuantity) * o.referencePrice * 1.01, 0);
@@ -269,7 +324,8 @@ export async function reconcileAgentOwnedFills(client: KisVtsClient): Promise<vo
   rebuildAgentOwnedPositions(); saveState();
 }
 export const VTS_ORDER_LIMITS = { maxPositions: MAX_POSITIONS, maxNameFraction: 0.10, firstTrancheFraction: 0.10,
-  principalKrw: PRINCIPAL_KRW, dailyBuyCapKrw: DAILY_BUY_CAP, perOrderCapKrw: marketRiskLimits("DOMESTIC").orderCapKrw, riskPerTradeFraction: 0.005,
+  principalKrw: PRINCIPAL_KRW, dailyBuyCapKrw: DAILY_BUY_CAP, buyCapWindow: "ROLLING_24H" as const,
+  perOrderCapKrw: marketRiskLimits("DOMESTIC").orderCapKrw, riskPerTradeFraction: 0.005,
   usPerOrderCapUsd: US_ORDER_CAP_USD, usMaxNameFraction: marketRiskLimits("US_NASDAQ").nameFraction,
   usRiskPerTradeFraction: marketRiskLimits("US_NASDAQ").riskFraction,
   usdKrwSafetyRate: USD_KRW_SAFETY_RATE, sellScope: "AGENT_CREATED_ONLY" as const, usOrderType: "LIMIT" as const,
