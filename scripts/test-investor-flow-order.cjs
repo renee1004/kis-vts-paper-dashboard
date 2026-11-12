@@ -125,13 +125,16 @@ async function raceCycle(ms = 1500) {
 
   await check('agent source evaluates livePaperOrderIntent before any getInvestorFlows await', () => {
     const agent = fs.readFileSync(path.join(root, 'src/lib/agent.ts'), 'utf8');
-    const intentAt = agent.indexOf('const intent = livePaperOrderIntent(signal)');
-    const orderAt = agent.indexOf('await executeVtsMockOrder');
-    const refreshAt = agent.indexOf('void refreshDisplayScorecard');
-    const flowAt = agent.indexOf('await client.getInvestorFlows');
-    assert.ok(intentAt > 0 && orderAt > intentAt);
-    assert.ok(refreshAt > orderAt);
-    assert.ok(flowAt > refreshAt);
+    const analyzeFn = agent.split('async function analyzeWatchlistItem')[1].split('function buildScorecard')[0];
+    const cycle = agent.split('export async function runAgentCycle')[1];
+    assert.ok(analyzeFn.includes('const intent = livePaperOrderIntent(signal)'));
+    assert.ok(analyzeFn.includes('await executeVtsMockOrder'));
+    assert.equal(analyzeFn.includes('getInvestorFlows'), false);
+    assert.equal(analyzeFn.includes('refreshDisplayScorecard'), false);
+    const usLoopAt = cycle.indexOf('for (const item of [...state.usWatchlist])');
+    const refreshAt = cycle.indexOf('void refreshDisplayScorecards');
+    assert.ok(usLoopAt >= 0 && refreshAt > usLoopAt);
+    assert.ok(agent.includes('await client.getInvestorFlows'));
     const orderBlock = agent.split('const intent = livePaperOrderIntent(signal)')[1].split('function buildScorecard')[0];
     assert.equal(orderBlock.includes('getInvestorFlows'), false);
     assert.ok(orderBlock.includes('side: intent.side'));
@@ -149,12 +152,21 @@ async function raceCycle(ms = 1500) {
         return { orderNo: `n-${request.stockCode}`, branchNo: '1' };
       },
     });
+    const previousGetPrice = kis.KisVtsClient.prototype.getPrice;
+    kis.KisVtsClient.prototype.getPrice = async () => { events.push('price'); return lastClose; };
     const settled = await raceCycle(1500);
+    kis.KisVtsClient.prototype.getPrice = previousGetPrice;
     assert.equal(settled, 'completed', 'cycle must not await a never-resolving flow refresh');
     assert.deepEqual(submitted.map((r) => r.stockCode).sort(), ['000660', '005930']);
     assert.ok(submitted.every((r) => r.side === 'BUY' && r.quantity > 0));
+    const firstFlow = events.indexOf('flow');
+    const lastOrder = Math.max(events.lastIndexOf('order:005930'), events.lastIndexOf('order:000660'));
+    const lastPrice = events.lastIndexOf('price');
     assert.equal(events.filter((e) => e.startsWith('order:')).length, 2);
-    assert.ok(events.includes('flow'), 'display refresh still starts, but is not awaited');
+    assert.equal(events.filter((e) => e === 'price').length, 2);
+    assert.ok(firstFlow >= 0, 'display refresh still starts, but is not awaited');
+    assert.ok(lastPrice < firstFlow, `price after flow: ${events.join(',')}`);
+    assert.ok(lastOrder < firstFlow, `order after flow: ${events.join(',')}`);
   });
 
   await check('throwing getInvestorFlows still submits the trend-breakout-v2 order', async () => {

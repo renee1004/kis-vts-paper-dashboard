@@ -34,8 +34,8 @@ const globalAgent = globalThis as typeof globalThis & {
 async function analyzeWatchlistItem(
   client: KisVtsClient,
   item: WatchlistItem,
-): Promise<void> {
-  if (!item.stockCode) return;
+): Promise<{ item: WatchlistItem; price: number | null; bars: DailyBar[] } | null> {
+  if (!item.stockCode) return null;
 
   const isUs = item.market === "US_NASDAQ";
   if (isUs) {
@@ -114,9 +114,7 @@ async function analyzeWatchlistItem(
     }
   }
 
-  // Scorecard + 투자자별 매매동향 are display/research only. Paper-order
-  // intent does not read flow data; do not await a fresh fetch on this path.
-  void refreshDisplayScorecard(client, item, price, bars);
+  return { item, price, bars };
 }
 
 function buildScorecard(item: WatchlistItem, price: number | null, kisBars: DailyBar[]) {
@@ -171,6 +169,15 @@ async function refreshDisplayScorecard(
     buildScorecard(item, price, bars);
   } catch {
     addLog("ERROR", "점수판 표시 갱신 실패. 모의주문은 추세 돌파 신호를 사용합니다.", "WARN");
+  }
+}
+
+async function refreshDisplayScorecards(
+  client: KisVtsClient,
+  jobs: Array<{ item: WatchlistItem; price: number | null; bars: DailyBar[] }>,
+): Promise<void> {
+  for (const job of jobs) {
+    await refreshDisplayScorecard(client, job.item, job.price, job.bars);
   }
 }
 
@@ -240,13 +247,20 @@ export async function runAgentCycle(): Promise<void> {
     }
 
     // Snapshot: the dashboard may add/remove entries while this cycle awaits KIS calls.
+    const displayJobs: Array<{ item: WatchlistItem; price: number | null; bars: DailyBar[] }> = [];
     for (const item of [...state.watchlist]) {
-      await analyzeWatchlistItem(client, item);
+      const job = await analyzeWatchlistItem(client, item);
+      if (job) displayJobs.push(job);
     }
 
     for (const item of [...state.usWatchlist]) {
-      await analyzeWatchlistItem(client, item);
+      const job = await analyzeWatchlistItem(client, item);
+      if (job) displayJobs.push(job);
     }
+
+    // After every paper order: getInvestorFlows shares the KIS throttle queue with
+    // getPrice / submitMockOrder, so it must not start until those are done.
+    void refreshDisplayScorecards(client, displayJobs);
 
     addLog("SIGNAL", "국내·미국 관심종목 분석 사이클이 완료되었습니다.");
   } catch {
