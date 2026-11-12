@@ -184,12 +184,15 @@ check('live order helpers ignore DART views; real-order flags stay off', () => {
 
 check('collector/order sources: DART is a research sidecar and is not imported by the order path', () => {
   const req = fs.readFileSync(path.join(root, 'scripts/requirements-data.txt'), 'utf8');
-  assert.match(req, /opendartreader/);
+  assert.match(req, /opendartreader==0\.3\.3/);
   const py = fs.readFileSync(path.join(root, 'scripts/opendart-fundamentals.py'), 'utf8');
   assert.match(py, /DART_API_KEY/);
   assert.match(py, /redact/);
   assert.match(py, /cacheDate/);
   assert.match(py, /doesNotAffectOrders/);
+  assert.match(py, /getattr\(\s*\w+\s*,\s*['"]OpenDartReader['"]/);
+  assert.match(py, /make_opendart_client/);
+  assert.equal(/OpenDartReader\.OpenDartReader\(\s*key\s*\)/.test(py.split('def self_check')[0]), false);
   assert.equal(/print\(.*DART_API_KEY/.test(py), false);
   assert.equal(/KIS_APP_KEY|KIS_APP_SECRET/.test(py), false);
   const collect = fs.readFileSync(path.join(root, 'scripts/scorecard-collect.py'), 'utf8');
@@ -228,6 +231,7 @@ check('python --self-check parses fixtures without a network or installed OpenDa
   assert.equal(parsed.revenueYoyPct, 20);
   assert.deepEqual(parsed.aprilFirst, [2026, '11013', '1분기보고서']);
   assert.deepEqual(parsed.novFirst, [2026, '11014', '3분기보고서']);
+  assert.deepEqual(parsed.clientShapes, ['class', 'module']);
 });
 
 console.log(`${checks} opendart checks passed`);
