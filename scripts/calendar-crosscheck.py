@@ -178,7 +178,11 @@ def self_check() -> int:
     assert dashboard_status(calendar, "DOMESTIC", "20261109") == "open"
     assert dashboard_status(calendar, "DOMESTIC", "20261009") == "closed"
     assert dashboard_status(calendar, "DOMESTIC", "20261119") == "unknown"
-    assert dashboard_status(calendar, "DOMESTIC", "20270104") == "unknown"
+    assert dashboard_status(calendar, "DOMESTIC", "20270104") == "open"
+    assert dashboard_status(calendar, "DOMESTIC", "20270503") == "closed"
+    assert dashboard_status(calendar, "DOMESTIC", "20270719") == "closed"
+    assert dashboard_status(calendar, "DOMESTIC", "20271118") == "unknown"
+    assert dashboard_status(calendar, "DOMESTIC", "20280104") == "unknown"
     assert format_mismatch("2026-11-19", "unknown", "XKRX", "open") == (
         "calendar mismatch: 2026-11-19 dashboard=unknown, XKRX=open"
     )

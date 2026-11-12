@@ -1,6 +1,6 @@
 """Offline app calendar snapshot. Run in a research venv, never with broker keys.
 
-Requires exchange_calendars==4.13.2. Output is bounded to 2025-2026 and must be reviewed
+Requires exchange_calendars==4.13.2. Output is bounded to 2025-2027 and must be reviewed
 against exchange notices before activation. Regenerate after special-session notices.
 """
 import importlib.metadata
@@ -12,14 +12,14 @@ assert importlib.metadata.version('exchange_calendars') == '4.13.2'
 root = Path(__file__).resolve().parents[1]
 calendars = {'DOMESTIC': 'XKRX', 'US_NASDAQ': 'XNYS'}
 out = {'source': 'exchange_calendars', 'version': '4.13.2', 'license': 'Apache-2.0',
-       'from': '20250101', 'through': '20261231',
+       'from': '20250101', 'through': '20271231',
        'sourceUrl': 'https://github.com/gerrymanoim/exchange_calendars',
        'note': 'XNYS is a US regular-equity-session proxy, not a KIS execution calendar. Special closures require updates.',
-       'unverifiedDates': {'DOMESTIC': ['20261119'], 'US_NASDAQ': []},
-       'closureCorrections': {'DOMESTIC': ['20250603', '20260603', '20260717']},
+       'unverifiedDates': {'DOMESTIC': ['20261119', '20271118'], 'US_NASDAQ': []},
+       'closureCorrections': {'DOMESTIC': ['20250603', '20260603', '20260717', '20270503', '20270719']},
        'markets': {}}
 for market, calendar in calendars.items():
-    cal = xcals.get_calendar(calendar, start='2025-01-01', end='2026-12-31')
+    cal = xcals.get_calendar(calendar, start='2025-01-01', end='2027-12-31')
     sessions = {}
     for date, row in cal.schedule.iterrows():
         sessions[date.strftime('%Y%m%d')] = [row['open'].isoformat(), row['close'].isoformat()]
@@ -37,4 +37,6 @@ dest = root/'docs/third-party'; dest.mkdir(parents=True, exist_ok=True)
 (dest/'exchange-calendars-LICENSE.txt').write_text(dist.locate_file(license_paths[0]).read_text())
 print(json.dumps({'output':str(target), 'sessions':{m:len(s) for m,s in out['markets'].items()},
                   'oct9Domestic':out['markets']['DOMESTIC'].get('20261009'),
-                  'nov27US':out['markets']['US_NASDAQ'].get('20261127')}))
+                  'jan4Domestic2027':out['markets']['DOMESTIC'].get('20270104'),
+                  'nov27US':out['markets']['US_NASDAQ'].get('20261127'),
+                  'jul5US2027':out['markets']['US_NASDAQ'].get('20270705')}))

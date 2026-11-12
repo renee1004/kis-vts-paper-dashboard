@@ -42,7 +42,11 @@ check('2026-11-09 is a regular KRX trading day; isOpen is the session clock', ()
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20261109'), 'open');
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20261009'), 'closed');
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20261119'), 'unknown');
-  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270104'), 'unknown');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270104'), 'open');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270503'), 'closed');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270719'), 'closed');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20271118'), 'unknown');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20280104'), 'unknown');
   const midday = calendar.marketSession('DOMESTIC', new Date('2026-11-09T01:00:00Z'));
   assert.equal(midday.known, true);
   assert.equal(midday.isOpen, true);
@@ -133,6 +137,7 @@ check('failed balance sync does not stamp retained holdings as fresh', () => {
     usdKrw: USD_KRW_SAFETY_RATE, domesticSynced: false, overseasSynced: false,
   }), false);
   const skippedAt = JSON.parse(fs.readFileSync(file, 'utf8')).generatedAt;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
   assert.equal(data.writeResearchHoldings({
     domestic: [{ stockCode: '005930', stockName: '삼성전자', evaluation: 200000 }],
     overseas: [{ stockCode: 'NVDA', stockName: 'NVIDIA', evaluation: 99 }],
