@@ -50,8 +50,12 @@ check('2027 Seollal and Chuseok weekday closures follow XKRX lunar dates',()=>{
  for(const date of ['02-08','02-09']) assert.equal(isDomesticRegularMarketOpen(new Date(`2027-${date}T01:00:00Z`)),false,date);
  assert.equal(isDomesticRegularMarketOpen(new Date('2027-02-05T01:00:00Z')),true);
  for(const date of ['09-14','09-15','09-16']) assert.equal(isDomesticRegularMarketOpen(new Date(`2027-${date}T01:00:00Z`)),false,date);
- // Pinned XKRX 4.13.2 does not close 2027-07-19 (제헌절 Saturday; no substitute in 4.13.2).
- assert.equal(isDomesticRegularMarketOpen(new Date('2027-07-19T01:00:00Z')),true);
+});
+check('2027 Labor Day and Constitution Day substitutes missing from pinned XKRX are closed',()=>{
+ assert.equal(isDomesticRegularMarketOpen(new Date('2027-05-03T01:00:00Z')),false);
+ assert.equal(marketSession('DOMESTIC',new Date('2027-05-03T01:00:00Z')).known,true);
+ assert.equal(isDomesticRegularMarketOpen(new Date('2027-07-19T01:00:00Z')),false);
+ assert.equal(marketSession('DOMESTIC',new Date('2027-07-19T01:00:00Z')).known,true);
 });
 check('2027 US holidays include weekend-observed Independence Day and only Black Friday is an early close',()=>{
  for(const date of ['01-01','01-18','02-15','03-26','05-31','06-18','07-05','09-06','11-25','12-24'])
@@ -64,6 +68,7 @@ check('2027 US holidays include weekend-observed Independence Day and only Black
 });
 check('unknown years and invalid dates never fall back to weekday open',()=>{
  assert.equal(marketSession('DOMESTIC',new Date('2026-11-19T01:00:00Z')).known,false);
+ assert.equal(marketSession('DOMESTIC',new Date('2027-11-18T01:00:00Z')).known,false);
  assert.equal(marketSession('DOMESTIC',new Date('2028-01-04T01:00:00Z')).known,false);
  assert.equal(isDomesticRegularMarketOpen(new Date('2028-01-04T01:00:00Z')),false);
  assert.equal(usMarketStatusLabel(new Date('2028-01-04T16:00:00Z')),'UNKNOWN');

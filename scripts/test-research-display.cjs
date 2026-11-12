@@ -43,6 +43,9 @@ check('2026-11-09 is a regular KRX trading day; isOpen is the session clock', ()
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20261009'), 'closed');
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20261119'), 'unknown');
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270104'), 'open');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270503'), 'closed');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20270719'), 'closed');
+  assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20271118'), 'unknown');
   assert.equal(research.dashboardTradingDayStatus('DOMESTIC', '20280104'), 'unknown');
   const midday = calendar.marketSession('DOMESTIC', new Date('2026-11-09T01:00:00Z'));
   assert.equal(midday.known, true);

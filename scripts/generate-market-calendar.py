@@ -15,8 +15,8 @@ out = {'source': 'exchange_calendars', 'version': '4.13.2', 'license': 'Apache-2
        'from': '20250101', 'through': '20271231',
        'sourceUrl': 'https://github.com/gerrymanoim/exchange_calendars',
        'note': 'XNYS is a US regular-equity-session proxy, not a KIS execution calendar. Special closures require updates.',
-       'unverifiedDates': {'DOMESTIC': ['20261119'], 'US_NASDAQ': []},
-       'closureCorrections': {'DOMESTIC': ['20250603', '20260603', '20260717']},
+       'unverifiedDates': {'DOMESTIC': ['20261119', '20271118'], 'US_NASDAQ': []},
+       'closureCorrections': {'DOMESTIC': ['20250603', '20260603', '20260717', '20270503', '20270719']},
        'markets': {}}
 for market, calendar in calendars.items():
     cal = xcals.get_calendar(calendar, start='2025-01-01', end='2027-12-31')
