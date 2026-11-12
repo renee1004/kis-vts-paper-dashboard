@@ -110,6 +110,24 @@ check("middleware accepts correct HttpOnly cookie token", () => {
   assert.equal(result.ok, true);
 });
 
+check("cookie parser undoes a single encode, not a double encode", () => {
+  const token = "abc+/=xyz";
+  process.env.DASHBOARD_TOKEN = token;
+  const once = decision({
+    hostHeader: "192.0.2.10:3939",
+    originHeader: null,
+    cookieHeader: `${auth.AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+  });
+  assert.equal(once.ok, true);
+  const twice = decision({
+    hostHeader: "192.0.2.10:3939",
+    originHeader: null,
+    cookieHeader: `${auth.AUTH_COOKIE_NAME}=${encodeURIComponent(encodeURIComponent(token))}`,
+  });
+  assert.equal(twice.ok, false);
+  assert.equal(auth.parseCookieValue(`${auth.AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`, auth.AUTH_COOKIE_NAME), token);
+});
+
 check("unset token still allows loopback", () => {
   delete process.env.DASHBOARD_TOKEN;
   const result = decision({ authorizationHeader: null, cookieHeader: null });

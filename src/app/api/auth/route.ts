@@ -36,9 +36,12 @@ export async function POST(request: Request) {
     return apiJson({ success: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
   const response = apiJson({ success: true });
+  // Next.js ResponseCookies already encodeURIComponent the value. Pre-encoding
+  // would double-escape +, /, and = (common in generated tokens) so the cookie
+  // would not match on the next request.
   response.cookies.set({
     name: AUTH_COOKIE_NAME,
-    value: encodeURIComponent(provided),
+    value: provided,
     ...authCookieAttributes(),
   });
   return response;
