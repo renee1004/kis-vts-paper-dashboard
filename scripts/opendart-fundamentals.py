@@ -31,11 +31,12 @@ from pathlib import Path
 REQUEST_SLEEP_SEC = 0.3
 CACHE_NAME = "dart-fundamentals.json"
 KST = dt.timezone(dt.timedelta(hours=9))
+# Fiscal period end: annual (Dec 31) is later than that year's Q3.
 REPRT = (
-    ("11014", "3분기보고서"),
-    ("11012", "반기보고서"),
-    ("11013", "1분기보고서"),
-    ("11011", "사업보고서"),
+    ("11011", "사업보고서", 12, 31),
+    ("11014", "3분기보고서", 9, 30),
+    ("11012", "반기보고서", 6, 30),
+    ("11013", "1분기보고서", 3, 31),
 )
 ETF_NAME = ("ETF", "KODEX", "TIGER", "KBSTAR", "HANARO", "ACE", "SOL", "RISE", "TIMEFOLIO")
 EARNINGS_KEYS = ("잠정", "영업실적", "매출액또는손익", "연결재무제표 결정", "연결재무제표결정",
@@ -313,11 +314,32 @@ def earnings_from_list(rows: list[dict], today: dt.date) -> dict:
 
 
 def report_candidates(today: dt.date) -> list[tuple[int, str, str]]:
-    out = []
-    for year in (today.year, today.year - 1):
-        for code, label in REPRT:
-            out.append((year, code, label))
-    return out
+    """Newest completed reporting period first (annual beats that year's Q3)."""
+    cands = []
+    for year in (today.year, today.year - 1, today.year - 2):
+        for code, label, month, day in REPRT:
+            end = dt.date(year, month, day)
+            if end > today:
+                continue
+            cands.append((end, year, code, label))
+    cands.sort(key=lambda row: row[0], reverse=True)
+    return [(year, code, label) for _end, year, code, label in cands]
+
+
+def ok_count(symbols: dict) -> int:
+    return sum(1 for row in symbols.values() if row.get("ok"))
+
+
+def result_payload(today: dt.date, symbols: dict, errors: list[str], key: str | None) -> dict:
+    """File-level 미확인 when the API failed every symbol — not a fake 'ok' cache."""
+    if errors and ok_count(symbols) == 0:
+        reason = redact(errors[0], key) if errors else "DART 조회 실패"
+        payload = payload_shell(today, "미확인", reason, errors, symbols)
+        payload["summary"]["okCount"] = 0
+        return payload
+    payload = payload_shell(today, "ok", None, errors, symbols)
+    payload["summary"]["okCount"] = ok_count(symbols)
+    return payload
 
 
 def empty_symbol(code: str, reason: str) -> dict:
@@ -469,13 +491,7 @@ def main(argv: list[str] | None = None, write: bool = True) -> dict:
             atomic_write(data_dir() / CACHE_NAME, payload)
         return payload
     symbols, errors = collect(targets, today, key)
-    if not symbols and errors:
-        payload = payload_shell(today, "미확인", redact(errors[0], key), errors)
-        if write:
-            atomic_write(data_dir() / CACHE_NAME, payload)
-        return payload
-    payload = payload_shell(today, "ok", None, errors, symbols)
-    payload["summary"]["okCount"] = sum(1 for row in symbols.values() if row.get("ok"))
+    payload = result_payload(today, symbols, errors, key)
     if write:
         atomic_write(data_dir() / CACHE_NAME, payload)
     return payload
@@ -515,8 +531,26 @@ def self_check() -> int:
     assert not is_etf("005930", "삼성전자")
     missing = empty_symbol("005930", "DART_API_KEY 없음")
     assert missing["ok"] is False and missing["revenue"] is None
+    april = report_candidates(dt.date(2026, 4, 10))
+    assert april[0] == (2026, "11013", "1분기보고서")
+    assert april[1] == (2025, "11011", "사업보고서")
+    q3 = next(i for i, row in enumerate(april) if row[0] == 2025 and row[1] == "11014")
+    annual = next(i for i, row in enumerate(april) if row[0] == 2025 and row[1] == "11011")
+    assert annual < q3
+    nov = report_candidates(dt.date(2026, 11, 12))
+    assert nov[0] == (2026, "11014", "3분기보고서")
+    failed = result_payload(dt.date(2026, 11, 12), {"DOMESTIC:005930": empty_symbol("005930", "DART 재무제표 없음")},
+                            ["finstate 005930: HTTPError: 401 crtfc_key=super-secret-dart-key"], key)
+    assert failed["status"] == "미확인"
+    assert "REDACTED" in failed["reason"]
+    assert key not in failed["reason"]
+    assert failed["symbols"]["DOMESTIC:005930"]["ok"] is False
+    mixed = result_payload(dt.date(2026, 11, 12), {"DOMESTIC:005930": {**empty_symbol("005930", None), "ok": True}},
+                           ["finstate 000660: Timeout"], key)
+    assert mixed["status"] == "ok"
     print(json.dumps({"ok": True, "revenueYoyPct": parsed["revenueYoyPct"],
-                      "estimatedNextDate": earn["estimatedNextDate"]}, ensure_ascii=False, indent=1))
+                      "estimatedNextDate": earn["estimatedNextDate"],
+                      "aprilFirst": april[0], "novFirst": nov[0]}, ensure_ascii=False, indent=1))
     return 0
 
 

@@ -96,6 +96,20 @@ check('fetch failure reason is shown; API key is redacted', () => {
   assert.equal(dart.redactDartText('crtfc_key=test-dart-key-not-real leaked').includes('test-dart-key-not-real'), false);
 });
 
+check('all-symbol API failure is 미확인 even if placeholder rows were written as status ok', () => {
+  writeDart(cache({
+    status: 'ok', reason: null,
+    errors: ['finstate 005930: HTTPError: 401 crtfc_key=test-dart-key-not-real'],
+    symbols: { 'DOMESTIC:005930': { ...growing, ok: false, reason: 'DART 재무제표 없음', revenue: null, revenueYoyPct: null, operatingIncome: null, netIncome: null, operatingIncomeYoyPct: null, netIncomeYoyPct: null, debtRatioPct: null, roePct: null } },
+  }));
+  const view = dart.dartFundamentals('DOMESTIC', '005930');
+  assert.equal(view.financials, null);
+  assert.match(view.reason, /REDACTED|조회 실패|HTTPError/);
+  assert.equal(view.reason.includes('재무제표 없음'), false);
+  assert.equal(view.reason.includes('test-dart-key-not-real'), false);
+  assert.equal(dart.dartCacheView().status, '미확인');
+});
+
 check('stale (not today) cache is 미확인 and does not present yesterday numbers as fresh', () => {
   writeDart(cache({ cacheDate: yesterdayKst, generatedAt: yesterday.toISOString() }));
   const view = dart.dartFundamentals('DOMESTIC', '005930');
@@ -212,6 +226,8 @@ check('python --self-check parses fixtures without a network or installed OpenDa
   const parsed = JSON.parse(py.stdout);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.revenueYoyPct, 20);
+  assert.deepEqual(parsed.aprilFirst, [2026, '11013', '1분기보고서']);
+  assert.deepEqual(parsed.novFirst, [2026, '11014', '3분기보고서']);
 });
 
 console.log(`${checks} opendart checks passed`);

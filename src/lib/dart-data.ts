@@ -79,10 +79,13 @@ const MISSING: DartCacheView = {
   stale: false, symbolCount: 0, displayOnly: true,
 };
 
+function okSymbolCount(data: DartCache): number {
+  return Object.values(data.symbols).filter((row) => row.ok !== false).length;
+}
+
 export function dartCacheView(now = Date.now()): DartCacheView {
   const data = load();
   if (!data) return { ...MISSING };
-  const reason = redactDartText(data.reason || (data.status === "ok" ? "" : "DART 조회 실패"));
   const today = kstDate(now);
   if (data.cacheDate !== today) {
     return {
@@ -91,7 +94,10 @@ export function dartCacheView(now = Date.now()): DartCacheView {
       symbolCount: 0, displayOnly: true,
     };
   }
-  if (data.status !== "ok") {
+  const errors = data.errors ?? [];
+  const unavailable = data.status !== "ok" || (errors.length > 0 && okSymbolCount(data) === 0);
+  if (unavailable) {
+    const reason = redactDartText(data.reason || errors[0] || "DART 조회 실패");
     return {
       generatedAt: data.generatedAt, cacheDate: data.cacheDate, status: "미확인",
       reason: reason || "DART 조회 실패", stale: false,
@@ -100,7 +106,7 @@ export function dartCacheView(now = Date.now()): DartCacheView {
   }
   return {
     generatedAt: data.generatedAt, cacheDate: data.cacheDate, status: "ok",
-    reason: reason || "ok", stale: false,
+    reason: redactDartText(data.reason || "") || "ok", stale: false,
     symbolCount: Object.keys(data.symbols).length, displayOnly: true,
   };
 }
