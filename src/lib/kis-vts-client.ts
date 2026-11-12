@@ -15,6 +15,7 @@ import { addLog, loadSecrets, saveSecrets, setLastError, state } from "@/lib/sto
 import { completedBars, type DailyBar } from "@/lib/strategy";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
 import { assertSafeEnvironment, getOrderDecision } from "@/lib/safety";
+import { extractUsdKrwFromKisPayload } from "@/lib/fx-rate";
 
 interface KisEnvelope {
   rt_cd?: unknown;
@@ -460,6 +461,7 @@ export class KisVtsClient {
     stockEvaluationUsd: number;
     purchaseAmountUsd: number;
     profitLossUsd: number;
+    usdKrw: number | null;
   }> {
     const trId = "VTTS3012R";
     assertVtsTrId(trId);
@@ -529,6 +531,7 @@ export class KisVtsClient {
       stockEvaluationUsd,
       purchaseAmountUsd,
       profitLossUsd,
+      usdKrw: extractUsdKrwFromKisPayload(body),
     };
   }
 

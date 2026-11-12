@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { MarketComparisonView } from "@/lib/market-comparison";
+import { UsFxPnlBlock } from "@/components/us-fx-pnl";
 
 const money=(n:number|null)=>n==null?"평가 자료 대기":`${Math.round(n).toLocaleString("ko-KR")}원`;
 const pct=(n:number|null)=>n==null?"—":`${n.toFixed(2)}%`;
@@ -41,7 +42,13 @@ export function MarketComparisonPanel(){
           const f=data.filters[m];return <li key={m}>{m==="DOMESTIC"?"국내 KODEX200":"미국 SPY"}: {!f?"미수집":!f.known?`자료 확인 필요 (${f.reason})`:f.allow?"직전 월말이 10개월 평균 위: 신규 진입 허용":"직전 월말이 10개월 평균 이하: 신규 진입 보류"}</li>;
         })}</ul>
         <p className="text-xs text-slate-500">두 전략은 같은 시세·뉴스·비용을 사용합니다. 지수 필터는 신규 매수에만 적용하며 기존 보유분의 청산 규칙은 유지합니다. 관찰 시작 시 관심종목 {data.universe.length}개를 고정합니다. 반복 매수 후보 관찰 {data.counts.buyCandidates}회 중 공통 자료 보류 {data.counts.commonBlocked}회, 필터 통과 {data.counts.filterPassed}회, 필터 보류 {data.counts.filterBlocked}회이며 독립 거래 수가 아닙니다.</p>
-        <p className="text-xs text-slate-500">각 장부 예산 3,000만 원, 환율 1,500원 고정. 편도 비용 0.15%와 불리한 체결 가격 0.10%를 가정합니다. 최소 30초 이후 다음 관측 가격으로 체결하며 실제 체결이나 순수익을 뜻하지 않습니다. 최대 역행·상승폭은 5분 관측 기준으로, 관측 사이의 손절 가격 도달을 모두 포착하지 못합니다. 기준 ETF 보유는 두 전략보다 시장 노출이 클 수 있습니다. 재시작 후 기록 수집은 정지합니다.</p>
+        <p className="text-xs text-slate-500">각 장부 예산 3,000만 원, 주문 한도·비중은 환율 1,500원 고정. 현재 기록 환율 {data.assumptions.usdKrwSpot?.display ?? "미확인"}. 편도 비용 0.15%와 불리한 체결 가격 0.10%를 가정합니다. 최소 30초 이후 다음 관측 가격으로 체결하며 실제 체결이나 순수익을 뜻하지 않습니다. 최대 역행·상승폭은 5분 관측 기준으로, 관측 사이의 손절 가격 도달을 모두 포착하지 못합니다. 기준 ETF 보유는 두 전략보다 시장 노출이 클 수 있습니다. 재시작 후 기록 수집은 정지합니다.</p>
+        <p className="text-xs text-slate-500">{data.assumptions.limitsNote}</p>
+        <div className="space-y-3">
+          <UsFxPnlBlock title="기본 전략 미국 주가·환차 손익" data={data.base.usFxPnl} />
+          <UsFxPnlBlock title="필터 전략 미국 주가·환차 손익" data={data.filtered.usFxPnl} />
+          <UsFxPnlBlock title="미국 ETF 보유 주가·환차 손익" data={data.passive.usFxPnl} />
+        </div>
         {data.excursions.length>0&&<details><summary className="cursor-pointer text-sm">진입 후 하락·상승폭 기록 ({data.excursionCount}건)</summary>
           <div className="overflow-x-auto"><table className="mt-2 w-full text-sm"><thead><tr><th>전략</th><th>종목</th><th>최대 역행</th><th>최대 상승</th><th>상태</th></tr></thead><tbody>{data.excursions.map(e=><tr key={`${e.book}:${e.key}:${e.entryAt}`}><td>{e.book==="base"?"기본":"필터 추가"}</td><td>{e.symbol}</td><td>{pct(e.maePct)}</td><td>{pct(e.mfePct)}</td><td>{e.closedAt?"청산":"관찰 중"}</td></tr>)}</tbody></table></div></details>}
       </>}

@@ -215,6 +215,12 @@ export interface VtsOrder {
   sessionId: string | null;
   ownershipScope: "AGENT_CREATED_ONLY";
   averageFillPrice?: number;
+  /** Actual USD/KRW at fill time for US trades. Absent on older rows. */
+  fxUsdKrw?: number;
+  /** RECORDED = captured; UNAVAILABLE = looked up but 미확인. Missing = 환율 미기록. */
+  fxRateStatus?: "RECORDED" | "UNAVAILABLE";
+  fxCapturedAt?: string;
+  fxSource?: "KIS_OVERSEAS_BALANCE" | "DUNAMU" | "FRANKFURTER" | "NONE";
   exitReason?: string;
   positionId?: string;
   stopFraction?: number;

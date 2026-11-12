@@ -4,7 +4,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { bookSchema, refreshResearchNews, researchView } from "./news-research";
-import { bookSummary, shadowMarkStale, SHADOW_CAPITAL } from "./news-shadow";
+import { bookSummary, shadowBookUsFxPnl, shadowMarkStale, SHADOW_CAPITAL, SHADOW_FX } from "./news-shadow";
+import { FX_LIMITS_NOTE, formatUsdKrwDisplay, readUsdKrwSnapshot, refreshUsdKrwRate } from "./fx-rate";
+import { usFxPnlFromFills } from "./fx-pnl";
 import { assessNews, targetKey, type NewsTarget } from "./news-model";
 import { analyzeTrend } from "./strategy";
 import { KisVtsClient } from "./kis-vts-client";
@@ -19,7 +21,8 @@ const finite=z.number().finite(), nonnegative=finite.nonnegative(), positive=fin
 const market=z.enum(["DOMESTIC","US_NASDAQ"]);
 const target=z.object({market,stockCode:z.string().min(1).max(20),stockName:z.string().min(1).max(100)});
 const passive=z.object({cashKrw:nonnegative,quantity:nonnegative.int(),averagePriceKrw:nonnegative,feesKrw:nonnegative,
-  markKrw:positive.nullable(),markAt:timestamp.nullable(),pendingAt:timestamp.nullable(),entryAt:timestamp.nullable(),referencePriceKrw:positive.nullable()});
+  markKrw:positive.nullable(),markAt:timestamp.nullable(),pendingAt:timestamp.nullable(),entryAt:timestamp.nullable(),referencePriceKrw:positive.nullable(),
+  averagePriceUsd:positive.optional(),buyFxUsdKrw:positive.nullable().optional(),lastPriceUsd:positive.optional()});
 const verdict=z.object({known:z.boolean(),allow:z.boolean(),reason:z.string(),symbol:z.string(),monthEnds:z.array(z.string()),lastClose:positive.nullable(),average:positive.nullable(),fetchedAt:timestamp.nullable()});
 const schema=z.object({version:z.literal(COMPARISON_VERSION),startedAt:timestamp,updatedAt:timestamp,eligibleSince:timestamp.nullable(),
   base:bookSchema,filtered:bookSchema,passive:z.object({DOMESTIC:passive,US_NASDAQ:passive}),
@@ -73,6 +76,8 @@ async function benchmarkSnapshot(which:NewsTarget["market"]):Promise<BenchmarkSn
 async function cycle():Promise<void> {
   if(runtime.__marketComparisonJob||!runtime.__marketComparisonEnabled) return runtime.__marketComparisonJob;
   const job=async()=>{
+    let usdKrw:number|null=null;
+    try { const fx=await refreshUsdKrwRate(); usdKrw=fx.status==="AVAILABLE"?fx.rate:null; } catch { usdKrw=null; }
     const universe=getState().universe;
     const open=universe.filter(t=>marketSession(t.market).isOpen);
     const snapshots:Partial<Record<NewsTarget["market"],BenchmarkSnapshot>>={};
@@ -101,7 +106,7 @@ async function cycle():Promise<void> {
         const at=new Date().toISOString(), signal=analyzeTrend(bars), newsState=researchView(universe);
         const news=assessNews({target:t,universe,articles:newsState.articles,feeds:newsState.feeds,signal,price,previousClose:bars.at(-1)?.close??0,at});
         const next=structuredClone(getState());
-        const observation={target:t,signal,price,previousClose:bars.at(-1)?.close??0,at,news};
+        const observation={target:t,signal,price,previousClose:bars.at(-1)?.close??0,at,news,usdKrw};
         const event=advanceComparison(next,observation,snapshots[t.market]??null);
         if(event) commit(next,{kind:"observation",observation,event});
       } catch { runtime.__marketComparisonError=`${t.stockName}: 시세·뉴스·기록 확인 실패`; }
@@ -112,7 +117,7 @@ async function cycle():Promise<void> {
         const price=which==="DOMESTIC"?await client.getPrice("069500"):await client.getOverseasPrice("SPY","AMS");
         if(!runtime.__marketComparisonEnabled) break;
         const at=new Date().toISOString(), next=structuredClone(getState());
-        advancePassive(next,which,price,at);commit(next,{kind:"passive_quote",market:which,price,at});
+        advancePassive(next,which,price,at,usdKrw);commit(next,{kind:"passive_quote",market:which,price,at,usdKrw});
       } catch { runtime.__marketComparisonError="지수 보유 기준 시세·기록 확인 실패"; }
     }
   };
@@ -139,11 +144,22 @@ export function stopMarketComparison():void {
   if(runtime.__marketComparisonTimer) clearInterval(runtime.__marketComparisonTimer);
   runtime.__marketComparisonTimer=undefined;
 }
+function passiveUsFxPnl(lot:StoredComparison["passive"]["US_NASDAQ"], currentFx:ReturnType<typeof readUsdKrwSnapshot>){
+  if(lot.quantity<=0) return usFxPnlFromFills([], {}, currentFx);
+  const hasUsd=lot.averagePriceUsd!=null;
+  const priceUsd=lot.averagePriceUsd??lot.averagePriceKrw/SHADOW_FX;
+  const markUsd=lot.lastPriceUsd??(lot.markKrw==null?undefined:lot.markKrw/SHADOW_FX);
+  return usFxPnlFromFills([{
+    side:"BUY", quantity:lot.quantity, priceUsd,
+    fxUsdKrw:lot.buyFxUsdKrw, fxRateStatus:lot.buyFxUsdKrw!=null?"RECORDED":hasUsd?"UNAVAILABLE":undefined,
+    stockCode:"SPY", stockName:"SPY",
+  }], markUsd?{SPY:markUsd}:{}, currentFx);
+}
 export function marketComparisonView(){
-  const current=getState(),now=Date.now();
+  const current=getState(),now=Date.now(),usdKrw=readUsdKrwSnapshot();
   const summary=(book:StoredComparison["base"])=>{
     const result=bookSummary(book,now,true), ready=!!current.eligibleSince&&!result.staleMarks;
-    return {...result,navKrw:ready?result.navKrw:null,returnPct:ready?result.returnPct:null};
+    return {...result,navKrw:ready?result.navKrw:null,returnPct:ready?result.returnPct:null,usFxPnl:shadowBookUsFxPnl(book,usdKrw)};
   };
   const passiveRows=Object.entries(current.passive).map(([which,lot])=>({market:which,...lot,
     navKrw:lot.markKrw==null&&lot.quantity>0?null:lot.cashKrw+lot.quantity*(lot.markKrw??0),
@@ -154,8 +170,10 @@ export function marketComparisonView(){
     waitingForMarket:current.universe.length>0&&!current.universe.some(t=>marketSession(t.market).isOpen),
     startedAt:current.startedAt,updatedAt:current.updatedAt,eligibleSince:current.eligibleSince,universe:current.universe,
     lastError:runtime.__marketComparisonError??current.lastError,lastDecision:current.lastDecision,filters:current.filters,counts:current.counts,
-    base:summary(current.base),filtered:summary(current.filtered),passive:{navKrw:passiveNav,returnPct:passiveNav==null?null:(passiveNav/SHADOW_CAPITAL-1)*100,markets:passiveRows},
+    base:summary(current.base),filtered:summary(current.filtered),
+    passive:{navKrw:passiveNav,returnPct:passiveNav==null?null:(passiveNav/SHADOW_CAPITAL-1)*100,markets:passiveRows,usFxPnl:passiveUsFxPnl(current.passive.US_NASDAQ,usdKrw)},
     excursionCount:current.excursions.length,excursions:current.excursions.slice(-30),executionMode:"LOCAL_SHADOW_ONLY" as const,
-    assumptions:{budgetKrw:SHADOW_CAPITAL,usdKrw:1500,costBpsPerSide:15,slippageBpsPerSide:10,samplingSeconds:300,benchmarkSymbols:BENCHMARK_SYMBOLS}};
+    assumptions:{budgetKrw:SHADOW_CAPITAL,usdKrw:1500,usdKrwSpot:{rate:usdKrw.rate,display:formatUsdKrwDisplay(usdKrw),capturedAt:usdKrw.capturedAt,source:usdKrw.source,status:usdKrw.status},
+      costBpsPerSide:15,slippageBpsPerSide:10,samplingSeconds:300,benchmarkSymbols:BENCHMARK_SYMBOLS,limitsNote:FX_LIMITS_NOTE}};
 }
 export type MarketComparisonView=ReturnType<typeof marketComparisonView>;

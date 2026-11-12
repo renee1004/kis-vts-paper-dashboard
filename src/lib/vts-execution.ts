@@ -13,6 +13,7 @@ import { isPending, ownedLot, sameKisOrderNo, sellableQuantity } from "@/lib/own
 import { exitDecision, sizeForRisk, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW, US_ORDER_CAP_USD, marketRiskLimits, isLeveredProduct, leveredCapQuantity } from "@/lib/trading-limits";
+import { readUsdKrwSnapshot, stampUsFillFx } from "@/lib/fx-rate";
 import { researchBuyNewsBlock } from "@/lib/news-research";
 import { closeBreakdown, findStopOverride, kstMinutes, recentLow, REBASED_TREND_RULE, type StopOverride } from "@/lib/stop-rebase";
 const PRINCIPAL_KRW = PAPER_CAPITAL_KRW;
@@ -252,7 +253,10 @@ export async function reconcileAgentOwnedFills(client: KisVtsClient): Promise<vo
         e.stockCode === order.stockCode && (!order.kisBranchNo || !e.branchNo || e.branchNo === order.kisBranchNo));
       if (!execution) { order.status = "UNKNOWN"; order.blockedReason = "FILL_NOT_FOUND_REVIEW_REQUIRED"; continue; }
       order.filledQuantity = Math.max(order.filledQuantity, Math.min(order.quantity, execution.filledQuantity));
-      if (execution.averageFillPrice > 0) order.averageFillPrice = execution.averageFillPrice;
+      if (execution.averageFillPrice > 0) {
+        order.averageFillPrice = execution.averageFillPrice;
+        if (order.market === "US_NASDAQ") stampUsFillFx(order, readUsdKrwSnapshot());
+      }
       order.status = order.filledQuantity >= order.quantity ? "FILLED" : order.orderDate < marketDate(order.market)
         ? "EXPIRED" : order.filledQuantity > 0 ? "PARTIALLY_FILLED" : "SUBMITTED";
       order.blockedReason = null;

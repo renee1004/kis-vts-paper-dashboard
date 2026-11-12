@@ -25,6 +25,7 @@ import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileA
 import { recordPerformance } from "@/lib/performance-history";
 import { marketRiskLimits, PAPER_CAPITAL_KRW } from "@/lib/trading-limits";
 import { observeResearch, refreshResearchNews, researchHeadlinesFor } from "@/lib/news-research";
+import { recordObservedUsdKrw, refreshUsdKrwRate } from "@/lib/fx-rate";
 
 const globalAgent = globalThis as typeof globalThis & {
   __vtsAgentTimer?: ReturnType<typeof setInterval>;
@@ -195,6 +196,12 @@ export async function runAgentCycle(): Promise<void> {
     });
 
     try {
+      await refreshUsdKrwRate();
+    } catch {
+      addLog("INFO", "USD/KRW 환율 조회 실패. 미국 체결 환율은 미확인으로 기록합니다.", "WARN");
+    }
+
+    try {
       await reconcileAgentOwnedFills(client);
     } catch {
       addLog(
@@ -223,6 +230,7 @@ export async function runAgentCycle(): Promise<void> {
       const overseasBalance = await client.getOverseasBalance();
       state.overseasPositions = overseasBalance.positions;
       setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
+      if (overseasBalance.usdKrw != null) recordObservedUsdKrw(overseasBalance.usdKrw, "KIS_OVERSEAS_BALANCE");
       overseasSynced = true;
     } catch {
       addLog(

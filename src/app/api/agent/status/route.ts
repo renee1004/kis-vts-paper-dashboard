@@ -14,6 +14,8 @@ import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits
 import { sevenDayPerformance } from "@/lib/performance-history";
 import { MARKET_CALENDAR_INFO, marketSession } from "@/lib/market-calendar";
 import { calendarCrosscheckView } from "@/lib/research-display";
+import { FX_LIMITS_NOTE, formatUsdKrwDisplay, readUsdKrwSnapshot } from "@/lib/fx-rate";
+import { usFxPnlFromOrders } from "@/lib/fx-pnl";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,12 @@ export async function GET() {
   const overseasDecision = getOrderDecision("US_NASDAQ");
   const kis = getPublicKisConfig();
   const valuation = strategyValuation();
+  const usdKrw = readUsdKrwSnapshot();
+  const usMarks = Object.fromEntries(
+    state.overseasPositions
+      .filter((position) => position.currentPrice > 0)
+      .map((position) => [position.stockCode, position.currentPrice]),
+  );
   return apiJson({
     success: true,
     data: {
@@ -36,6 +44,16 @@ export async function GET() {
         unresolvedOrders: state.vtsOrders.filter((o) => o.status === "UNKNOWN").length,
         costAssumptionBpsPerSide: 15,
         fxAssumption: "FIXED_1500_NOT_ACTUAL_FX",
+        usdKrw: {
+          rate: usdKrw.rate,
+          capturedAt: usdKrw.capturedAt,
+          source: usdKrw.source,
+          status: usdKrw.status,
+          display: formatUsdKrwDisplay(usdKrw),
+          limitsUseSafetyRate: VTS_ORDER_LIMITS.usdKrwSafetyRate,
+          limitsNote: FX_LIMITS_NOTE,
+        },
+        usFxPnl: usFxPnlFromOrders(state.vtsOrders, usMarks, usdKrw),
         performanceScope: "ALL_TRACKED_FILLS_INCLUDING_LEGACY_NOT_WHOLE_ACCOUNT",
         sevenDayPerformance: sevenDayPerformance(state.performanceHistory, valuation.valid ? {
           at: new Date().toISOString(), pnlKrw: valuation.pnl,
