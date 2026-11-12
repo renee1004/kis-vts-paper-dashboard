@@ -2,7 +2,7 @@ import type { TradingMarket } from "./domain";
 import { MARKET_CALENDAR } from "./market-calendar-data";
 
 export const BENCHMARK_SYMBOLS = { DOMESTIC: "069500.KS", US_NASDAQ: "SPY" } as const;
-export const COMPARISON_VERSION = "news-chart-market-filter-shadow-v1";
+export const COMPARISON_VERSION = "news-chart-market-filter-shadow-v2-fx1400";
 export interface BenchmarkBar { date: string; adjustedClose: number; rawClose: number }
 export interface BenchmarkSnapshot { market: TradingMarket; symbol: string; fetchedAt: string; source: string; bars: BenchmarkBar[] }
 export interface MarketFilterVerdict {

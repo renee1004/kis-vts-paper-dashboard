@@ -43,8 +43,8 @@ const snapshotSchema = z.object({
 });
 type ResearchState = z.infer<typeof snapshotSchema>;
 const root = process.env.DATA_DIR || path.join(process.cwd(), ".data");
-// Preserve the 3M experiment intact; a changed capital base is a new experiment.
-const statePath = path.join(root, "news-research-capital30m-v2.json");
+// Preserve the 3M and 1,500-FX experiments intact; a changed FX basis is a new ledger.
+const statePath = path.join(root, "news-research-capital30m-v3.json");
 const runtime = globalThis as typeof globalThis & { __newsResearch?: ResearchState; __newsRefresh?: Promise<void> };
 function getState(): ResearchState {
   if (runtime.__newsResearch?.version === NEWS_VERSION) return runtime.__newsResearch;
@@ -73,7 +73,7 @@ function commit(next: ResearchState): void {
 function journal(next: ResearchState, kind: string, data: unknown): void {
   try {
     fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-    fs.appendFileSync(path.join(root, `news-evidence-capital30m-v2-${next.updatedAt.slice(0, 7)}.jsonl`),
+    fs.appendFileSync(path.join(root, `news-evidence-capital30m-v3-${next.updatedAt.slice(0, 7)}.jsonl`),
       JSON.stringify({ version: NEWS_VERSION, recordedAt: next.updatedAt, kind, data }) + "\n", { mode: 0o600 });
   } catch { next.journalError = "뉴스 근거 기록 저장 실패. 비교 데이터의 완전성을 확인하세요."; }
 }

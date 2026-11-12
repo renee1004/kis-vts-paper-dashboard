@@ -99,15 +99,22 @@ async function test(name,fn){await fn();passed++;console.log('PASS',name);}
    kis.KisVtsClient.prototype.submitMockOrder=async()=>{throw Error('ORDER_TRANSPORT_FORBIDDEN');};
    const s=snapshot(),raw=s.bars.map(b=>b.rawClose),adj=s.bars.map(b=>b.adjustedClose);
    global.fetch=async(url)=>{assert.match(String(url),/^https:\/\/query1\.finance\.yahoo\.com\/v8\/finance\/chart\//);return Response.json({chart:{result:[{meta:{symbol:'069500.KS'},timestamp:s.bars.map(b=>Date.parse(`${b.date.slice(0,4)}-${b.date.slice(4,6)}-${b.date.slice(6,8)}T00:00:00Z`)/1000),indicators:{quote:[{close:raw}],adjclose:[{adjclose:adj}]}}]}});};
+   const leftover=path.join(dir,'market-comparison-v1.json');
+   const leftoverEvents=path.join(dir,'market-comparison-v1-events.jsonl');
+   const leftoverPayload=JSON.stringify({leftover:true,version:'news-chart-market-filter-shadow-v1'});
+   fs.writeFileSync(leftover,leftoverPayload);fs.writeFileSync(leftoverEvents,'{"leftover":true}\n');
    const service=l('src/lib/market-comparison.ts');service.startMarketComparison([target]);
    for(let i=0;i<100&&service.marketComparisonView().cycleRunning;i++)await new Promise(r=>setImmediate(r));
-   const view=service.marketComparisonView();assert.equal(view.lastError,null);assert.equal(view.counts.observations,1);assert.equal(view.isCollecting,true);assert.ok(fs.existsSync(path.join(dir,'market-comparison-v1.json')));
+   const view=service.marketComparisonView();assert.equal(view.lastError,null);assert.equal(view.counts.observations,1);assert.equal(view.isCollecting,true);assert.ok(fs.existsSync(path.join(dir,'market-comparison-v2.json')));
+   assert.equal(view.version,'news-chart-market-filter-shadow-v2-fx1400');
+   assert.equal(fs.readFileSync(leftover,'utf8'),leftoverPayload);
+   assert.equal(fs.readFileSync(leftoverEvents,'utf8'),'{"leftover":true}\n');
    service.stopMarketComparison();assert.equal(service.marketComparisonView().isCollecting,false);
    const route=l('src/app/api/strategy-comparison/route.ts');
    const refused=await route.POST(new Request('http://localhost:3939/api/strategy-comparison',{method:'POST',headers:{origin:'https://example.com',host:'localhost:3939','content-type':'application/json'},body:JSON.stringify({action:'start'})}));
    assert.equal(refused.status,403);assert.equal(service.marketComparisonView().isCollecting,false);
    assert.equal(fs.existsSync(path.join(dir,'state.json')),false,'read-only collector must not create broker runtime state');
-   fs.writeFileSync(path.join(dir,'market-comparison-v1.json'),'{broken');delete global.__marketComparison;
+   fs.writeFileSync(path.join(dir,'market-comparison-v2.json'),'{broken');delete global.__marketComparison;
    assert.throws(()=>createLoader()('src/lib/market-comparison.ts').marketComparisonView(),/COMPARISON_HISTORY_UNREADABLE/);
   }finally{
    if(global.__marketComparisonTimer) clearInterval(global.__marketComparisonTimer);

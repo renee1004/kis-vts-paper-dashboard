@@ -1,7 +1,12 @@
 export const VTS_BASE_URL = "https://openapivts.koreainvestment.com:29443";
 
-/** Conservative USD→KRW rate for combined daily buy cap (domestic + US). */
-export const USD_KRW_SAFETY_RATE = 1_500;
+/**
+ * Conservative USD→KRW conversion for order limits, name-fraction KRW conversion,
+ * shadow/news sizing, and strategy valuation. Not a live FX rate and not used to
+ * derive the daily KRW buy cap.
+ */
+export const USD_KRW_SAFETY_RATE = 1_400;
+export const FX_ASSUMPTION_SOURCE = "FIXED_1400_NOT_ACTUAL_FX" as const;
 
 export type TradingMarket = "DOMESTIC" | "US_NASDAQ";
 

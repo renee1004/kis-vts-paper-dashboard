@@ -14,6 +14,7 @@ import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits
 import { sevenDayPerformance } from "@/lib/performance-history";
 import { MARKET_CALENDAR_INFO, marketSession } from "@/lib/market-calendar";
 import { calendarCrosscheckView } from "@/lib/research-display";
+import { FX_ASSUMPTION_SOURCE } from "@/lib/domain";
 import { FX_LIMITS_NOTE, formatUsdKrwDisplay, currentUsdKrwSnapshot } from "@/lib/fx-rate";
 import { usFxPnlFromOrders } from "@/lib/fx-pnl";
 
@@ -43,7 +44,7 @@ export async function GET() {
         estimatedReturnPct: valuation.valid ? valuation.pnl / VTS_ORDER_LIMITS.principalKrw * 100 : null,
         unresolvedOrders: state.vtsOrders.filter((o) => o.status === "UNKNOWN").length,
         costAssumptionBpsPerSide: 15,
-        fxAssumption: "FIXED_1500_NOT_ACTUAL_FX",
+        fxAssumption: FX_ASSUMPTION_SOURCE,
         usdKrw: {
           rate: usdKrw.rate,
           capturedAt: usdKrw.capturedAt,

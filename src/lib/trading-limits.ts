@@ -4,8 +4,10 @@ import { USD_KRW_SAFETY_RATE, type TradingMarket } from "@/lib/domain";
 export const INITIAL_ACCOUNT_BALANCE_KRW = 30_000_000;
 export const PAPER_CAPITAL_KRW = INITIAL_ACCOUNT_BALANCE_KRW;
 export const CAPITAL_BASIS = "USER_CONFIRMED_INITIAL_MOCK_ACCOUNT_BALANCE";
-// Must accommodate one authorized USD 3,000 buy at the current fixed FX assumption.
-export const DAILY_BUY_CAP_KRW = 3_000 * USD_KRW_SAFETY_RATE;
+// Absolute KRW cap (domestic + US combined). Kept at 4,500,000 rather than
+// 3,000 × USD_KRW_SAFETY_RATE so the daily budget does not shrink when the
+// conservative FX assumption moves. US per-order cap stays 3,000 USD.
+export const DAILY_BUY_CAP_KRW = 4_500_000;
 export const US_ORDER_CAP_USD = 3_000;
 export function marketRiskLimits(market: TradingMarket) {
   return market === "US_NASDAQ"

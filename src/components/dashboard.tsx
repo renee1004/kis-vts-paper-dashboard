@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { VTS_BASE_URL } from "@/lib/domain";
+import { USD_KRW_SAFETY_RATE, VTS_BASE_URL } from "@/lib/domain";
 import {
   DAILY_BUY_CAP_KRW,
   PAPER_CAPITAL_KRW,
@@ -719,11 +719,11 @@ export function Dashboard() {
             <p>앱 거래 기준 추정 손익: {data.agent.strategy?.estimatedPnlKrw == null
               ? "체결가·잔고 확인 필요"
               : `${Math.round(data.agent.strategy.estimatedPnlKrw).toLocaleString()}원 (${data.agent.strategy.estimatedReturnPct?.toFixed(2)}%)`}</p>
-            <p className="text-slate-500">한도·비중용 추정 손익은 편도 비용 0.15%, 달러당 1,500원 가정입니다. 실제 수수료·세금·환율 반영 수익률과 다르며 전략 우위를 뜻하지 않습니다.</p>
+            <p className="text-slate-500">한도·비중용 추정 손익은 편도 비용 0.15%, 달러당 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원 가정입니다. 실제 수수료·세금·환율 반영 수익률과 다르며 전략 우위를 뜻하지 않습니다.</p>
             <p className="text-slate-500">현재 USD/KRW: {data.agent.strategy?.usdKrw?.display ?? "미확인"}
               {data.agent.strategy?.usdKrw?.source && data.agent.strategy.usdKrw.source !== "NONE"
                 ? ` (${data.agent.strategy.usdKrw.source})` : ""}
-              . 주문 한도는 계속 1,500원을 씁니다.</p>
+              . 주문 한도는 계속 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원을 씁니다.</p>
             <UsFxPnlBlock title="미국(NASDAQ) 주가·환차 손익" data={data.agent.strategy?.usFxPnl} />
             {(data.agent.strategy?.unresolvedOrders ?? 0) > 0 && <p className="text-red-700">주문 결과 미확인 {data.agent.strategy?.unresolvedOrders}건: 증권사 주문·체결 확인 전 신규 매수를 차단합니다.</p>}
           </CardContent>

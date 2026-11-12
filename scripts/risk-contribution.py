@@ -2,8 +2,8 @@
 """Concentration / risk-contribution snapshot (skfolio, BSD-3-Clause).
 
 Display/research only. Never places orders, never reads .env or account numbers.
-Weights use KIS evaluation amounts; USD is converted with the same fixed 1,500 KRW
-rate the dashboard uses for combined limits (FIXED_1500_NOT_ACTUAL_FX).
+Weights use KIS evaluation amounts; USD is converted with the same fixed 1,400 KRW
+rate the dashboard uses for combined limits (FIXED_1400_NOT_ACTUAL_FX).
 
 Writes $DATA_DIR/risk-contribution.json (default ./.data).
 
@@ -21,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-USD_KRW = 1500
+USD_KRW = 1400
 THEME = {
     "005930": "반도체", "000660": "반도체", "003160": "반도체",
     "NVDA": "반도체", "AMD": "반도체", "TSM": "반도체", "AVGO": "반도체",
@@ -285,7 +285,7 @@ def empty_payload(errors: list[str], usd_krw: float = USD_KRW) -> dict:
         "source": "skfolio",
         "license": "BSD-3-Clause",
         "usdKrw": usd_krw,
-        "fxSource": "FIXED_1500_NOT_ACTUAL_FX",
+        "fxSource": "FIXED_1400_NOT_ACTUAL_FX",
         "holdings": [], "groups": [],
         "semiconductorWeightPct": None, "semiconductorRiskContributionPct": None,
         "riskSource": None, "holdingCount": 0, "totalEvaluationKrw": 0,

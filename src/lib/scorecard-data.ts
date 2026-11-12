@@ -2,7 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import type { TradingMarket } from "@/lib/domain";
+import { FX_ASSUMPTION_SOURCE, type TradingMarket } from "@/lib/domain";
 import { DECISION_ENGINE_VERSION, type DailyBar } from "@/lib/strategy";
 import { SCORECARD_VERSION, referenceCrudeOil, referencePsr, UNKNOWN_CRUDE_OIL, type CrudeOilReference, type EventCalendar, type FlowsInput, type FundamentalsInput, type MacroInput, type PsrReference } from "@/lib/scorecard";
 import { dartEarningsOverlay } from "@/lib/dart-data";
@@ -100,7 +100,7 @@ export function writeResearchHoldings(input: {
     fs.mkdirSync(root(), { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(root(), "research-holdings.json"), JSON.stringify({
       version: 1, generatedAt: new Date().toISOString(), usdKrw: input.usdKrw,
-      fxSource: "FIXED_1500_NOT_ACTUAL_FX",
+      fxSource: FX_ASSUMPTION_SOURCE,
       syncedMarkets: [
         ...(input.domesticSynced ? ["DOMESTIC"] as const : []),
         ...(input.overseasSynced ? ["US_NASDAQ"] as const : []),
