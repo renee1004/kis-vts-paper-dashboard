@@ -1,7 +1,9 @@
 // Daily-bar research approximation. Not an intraday KIS execution simulator.
 const fs = require('node:fs');
 const { createLoader } = require('./lib/load-source.cjs');
-const { analyzeTrend, exitDecision, sizeForRisk, STRATEGY_VERSION } = createLoader()('src/lib/strategy.ts');
+const load = createLoader();
+const { analyzeTrend, exitDecision, sizeForRisk, STRATEGY_VERSION } = load('src/lib/strategy.ts');
+const { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW } = load('src/lib/trading-limits.ts');
 
 function legacySignal(bars) {
   if (bars.length < 10) return {side:'HOLD',stopFraction:.05};
@@ -11,7 +13,7 @@ function legacySignal(bars) {
   return {side:momentum>=1.5 && Math.round(Math.abs(momentum)*20)>=75?'BUY':momentum<=-1.5?'SELL':'HOLD',stopFraction:.05};
 }
 function backtest(dataset, {start, end, mode='candidate', costBps=15, slippageBps=10}={}) {
-  const capital=3_000_000;
+  const capital=PAPER_CAPITAL_KRW;
   const fee=costBps/10000, slip=slippageBps/10000;
   let cash=capital, peak=capital, maxDrawdown=0, costs=0, exposureSum=0;
   const holdings=new Map(), curves=[], closedTrades=[];
@@ -49,7 +51,7 @@ function backtest(dataset, {start, end, mode='candidate', costBps=15, slippageBp
       const committed=[...holdings.values()].reduce((s,h)=>s+h.quantity*h.lastPrice,0);
       if(cash+committed<=capital*.8)continue;
       const price=today.open*series.fx*(1+slip);
-      const quantity=Math.min(sizeForRisk({budget:capital,price,stopFraction:signal.stopFraction,committed,dailyRemaining:capital-dayBuy}),Math.floor(cash/(price*(1+fee))));
+      const quantity=Math.min(sizeForRisk({budget:capital,price,stopFraction:signal.stopFraction,committed,dailyRemaining:DAILY_BUY_CAP_KRW-dayBuy}),Math.floor(cash/(price*(1+fee))));
       if(quantity<=0)continue;
       const value=quantity*price;cash-=value*(1+fee);costs+=value*fee;dayBuy+=value;
       holdings.set(symbol,{quantity,averagePrice:price,unitCost:price*(1+fee),lastPrice:price,
@@ -77,7 +79,7 @@ if(require.main===module){
   if(!process.argv[2])throw Error('Usage: node scripts/backtest.cjs DATASET.json [REPORT.json]');
   const dataset=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
   const report={strategy:STRATEGY_VERSION,validationStatus:'UNVALIDATED_PAPER_ONLY',
-    assumptions:{initialCapitalKrw:3000000,costBpsPerSide:15,slippageBpsPerSide:10,fx:'Fixed 1500 KRW/USD; not actual currency returns',
+    assumptions:{initialCapitalKrw:PAPER_CAPITAL_KRW,dailyBuyCapKrw:DAILY_BUY_CAP_KRW,costBpsPerSide:15,slippageBpsPerSide:10,fx:'Fixed 1500 KRW/USD; not actual currency returns',
       description:'Daily next-open approximation using adjusted OHLC; dividends approximated by adjustment. Shared new risk limits for candidate and old signal. Not a full replay of old bugs or minute-by-minute risk exits.',
       limitations:['Chosen current watchlist has survivorship/selection bias','No order-book liquidity, KIS fill or partial-fill simulation','No point-in-time constituent universe','No intraday daily-loss trigger simulation','Historical comparison inspected during development, not an untouched holdout or prospective validation','Mixed-market daily ordering is an approximation, not timestamp-accurate execution','Costs are assumptions, not broker/tax schedules']},results:[]};
   for(const [start,end] of [['20180101','20211231'],['20220101','20260910']])

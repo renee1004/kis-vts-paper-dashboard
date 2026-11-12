@@ -12,4 +12,5 @@ const highCosts=backtest(source,{...options,costBps:100,slippageBps:100});
 assert.ok(highCosts.netReturnPct<normal.netReturnPct);
 assert.ok(normal.feesKrw>0);
 assert.ok(normal.curve.every(r=>Number.isFinite(r.nav)&&r.nav>0));
-console.log('Backtest mechanics: 4 checks passed (future-data isolation, costs, fees, finite NAV).');
+assert.ok(normal.curve[0].nav>20e6 && normal.curve[0].nav<40e6);
+console.log('Backtest mechanics: 5 checks passed (future-data isolation, costs, fees, finite NAV, 30M capital).');
