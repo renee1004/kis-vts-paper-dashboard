@@ -214,6 +214,8 @@ check("proxy.ts is the /api middleware and uses shared auth", () => {
   assert.equal(source.includes("export function proxy"), true);
   assert.equal(source.includes('matcher: ["/api/:path*"]'), true);
   assert.equal(source.includes("authorizeDashboardRequest"), true);
+  assert.equal(source.includes("/manifest.webmanifest"), false);
+  assert.equal(source.includes("apple-touch-icon"), false);
 });
 
 check("gitignore lists encrypted config and key filenames", () => {
