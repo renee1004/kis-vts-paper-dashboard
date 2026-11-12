@@ -90,40 +90,33 @@ async function analyzeWatchlistItem(
     signal.side === "HOLD" ? signal.reason : "Rule Engine 검증 대기";
   state.lastCycleSummary.signalsGenerated += 1;
 
-  // Scorecard + reference indicators are display/research only and must not
-  // change order side, quantity, or whether a paper order is submitted.
-  try {
-    if (!isUs && kisFlowsDue(item.stockCode)) {
-      try { setKisFlows(item.stockCode, { ...(await client.getInvestorFlows(item.stockCode)), at: new Date().toISOString() }); }
-      catch { noteKisFlowsFailure(item.stockCode); } // falls back to Naver/pykrx cache
-    }
-    buildScorecard(item, price, bars);
-  } catch {
-    addLog("ERROR", "점수판 표시 갱신 실패. 모의주문은 추세 돌파 신호를 사용합니다.", "WARN");
-  }
-
   const intent = livePaperOrderIntent(signal);
   if (price && intent.side !== "HOLD") {
     const lastDate = bars.at(-1)?.date ?? "";
     const ageDays = lastDate ? (Date.now() - Date.parse(lastDate.slice(0, 4) + "-" + lastDate.slice(4, 6) + "-" + lastDate.slice(6, 8) + "T00:00:00Z")) / 86400_000 : Infinity;
     if (ageDays > 7 || (intent.side === "BUY" && Math.abs(price / bars.at(-1)!.close - 1) > 0.02)) {
-      item.blockedReason = "STALE_CANDLES_OR_ENTRY_GAP"; return;
+      item.blockedReason = "STALE_CANDLES_OR_ENTRY_GAP";
+    } else {
+      const signalId = [STRATEGY_VERSION, item.market, item.stockCode, lastDate, intent.side].join(":");
+      const order = await executeVtsMockOrder(client, {
+        market: item.market,
+        stockCode: item.stockCode,
+        stockName: item.stockName,
+        side: intent.side,
+        confidence: intent.confidence,
+        price,
+        signalId,
+        signalDate: intent.signalDate ?? undefined,
+        stopFraction: intent.stopFraction,
+        trendMa: intent.trendMa,
+      });
+      item.blockedReason = order?.blockedReason ?? "";
     }
-    const signalId = [STRATEGY_VERSION, item.market, item.stockCode, lastDate, intent.side].join(":");
-    const order = await executeVtsMockOrder(client, {
-      market: item.market,
-      stockCode: item.stockCode,
-      stockName: item.stockName,
-      side: intent.side,
-      confidence: intent.confidence,
-      price,
-      signalId,
-      signalDate: intent.signalDate ?? undefined,
-      stopFraction: intent.stopFraction,
-      trendMa: intent.trendMa,
-    });
-    item.blockedReason = order?.blockedReason ?? "";
   }
+
+  // Scorecard + 투자자별 매매동향 are display/research only. Paper-order
+  // intent does not read flow data; do not await a fresh fetch on this path.
+  void refreshDisplayScorecard(client, item, price, bars);
 }
 
 function buildScorecard(item: WatchlistItem, price: number | null, kisBars: DailyBar[]) {
@@ -161,6 +154,24 @@ function buildScorecard(item: WatchlistItem, price: number | null, kisBars: Dail
     references: { psr: kisPsr.psr != null ? kisPsr : (data.symbol?.psr ?? UNKNOWN_PSR) } };
   setScorecard(full);
   return full;
+}
+
+/** Display-only. Errors are logged; a hung getInvestorFlows must not block the cycle. */
+async function refreshDisplayScorecard(
+  client: KisVtsClient,
+  item: WatchlistItem,
+  price: number | null,
+  bars: DailyBar[],
+): Promise<void> {
+  try {
+    if (item.market !== "US_NASDAQ" && kisFlowsDue(item.stockCode)) {
+      try { setKisFlows(item.stockCode, { ...(await client.getInvestorFlows(item.stockCode)), at: new Date().toISOString() }); }
+      catch { noteKisFlowsFailure(item.stockCode); } // falls back to Naver/pykrx cache
+    }
+    buildScorecard(item, price, bars);
+  } catch {
+    addLog("ERROR", "점수판 표시 갱신 실패. 모의주문은 추세 돌파 신호를 사용합니다.", "WARN");
+  }
 }
 
 export async function runAgentCycle(): Promise<void> {
