@@ -12,6 +12,7 @@ export interface Excursion {
 export interface PassiveLot {
   cashKrw: number; quantity: number; averagePriceKrw: number; feesKrw: number;
   markKrw: number|null; markAt: string|null; pendingAt: string|null; entryAt: string|null; referencePriceKrw: number|null;
+  averagePriceUsd?: number; buyFxUsdKrw?: number|null; lastPriceUsd?: number;
 }
 export interface ComparisonState {
   version: typeof COMPARISON_VERSION; startedAt: string; updatedAt: string; eligibleSince: string|null;
@@ -69,12 +70,13 @@ export function advanceComparison(state: ComparisonState, observation: ResearchO
 /** Passive benchmark: 50% domestic / 50% US, whole shares, no rebalancing.
  * This benchmark deliberately has a different exposure from the <=50% strategy.
  */
-export function advancePassive(state: ComparisonState, market: TradingMarket, price: number, at: string): void {
+export function advancePassive(state: ComparisonState, market: TradingMarket, price: number, at: string, usdKrw?: number|null): void {
   const lot=state.passive[market], now=Date.parse(at);
   if(!state.eligibleSince||!Number.isFinite(price)||price<=0||!Number.isFinite(now)||
     Date.parse(lot.markAt??"")>=now||!marketSession(market,new Date(now)).isOpen) return;
   const priceKrw=price*(market==="US_NASDAQ"?SHADOW_FX:1);
   lot.markKrw=priceKrw; lot.markAt=at;
+  if(market==="US_NASDAQ") lot.lastPriceUsd=price;
   if(lot.entryAt) return;
   if(!lot.pendingAt){lot.pendingAt=at;lot.referencePriceKrw=priceKrw;return;}
   const age=now-Date.parse(lot.pendingAt);
@@ -85,4 +87,8 @@ export function advancePassive(state: ComparisonState, market: TradingMarket, pr
   if(quantity<1) return;
   const cost=quantity*execution, fee=cost*SHADOW_FEE;
   lot.quantity=quantity;lot.cashKrw-=cost+fee;lot.feesKrw+=fee;lot.averagePriceKrw=execution;lot.entryAt=at;lot.pendingAt=null;
+  if(market==="US_NASDAQ"){
+    lot.averagePriceUsd=price*(1+SHADOW_SLIPPAGE);
+    lot.buyFxUsdKrw=Number.isFinite(usdKrw)&&(usdKrw as number)>0?usdKrw as number:null;
+  }
 }

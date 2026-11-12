@@ -2,6 +2,7 @@ import { apiJson } from "@/lib/api-response";
 import { KisVtsClient, toBalanceSnapshot, toOverseasBalanceSnapshot } from "@/lib/kis-vts-client";
 import { getPublicKisConfig } from "@/lib/safety";
 import { setBalanceSnapshot, setOverseasBalanceSnapshot, state, saveState } from "@/lib/store";
+import { recordObservedUsdKrw, refreshUsdKrwRate } from "@/lib/fx-rate";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ export async function POST() {
       state.overseasPositions = overseasBalance.positions;
       saveState();
       setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
+      if (overseasBalance.usdKrw != null) recordObservedUsdKrw(overseasBalance.usdKrw, "KIS_OVERSEAS_BALANCE");
+      else await refreshUsdKrwRate();
       overseasSynced = true;
     } catch {
       // Domestic sync succeeded; overseas may be unavailable on some accounts.

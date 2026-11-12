@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { assessNews, matchNews, NEWS_VERSION, targetKey, type NewsArticle, type NewsFeed, type NewsTarget } from "@/lib/news-model";
+import { currentUsdKrwSnapshot } from "@/lib/fx-rate";
 import { feedSpecs, fetchNewsFeed } from "@/lib/news-feeds";
 import { advanceShadow, bookSummary, emptyBook, type ResearchObservation, type ShadowBook } from "@/lib/news-shadow";
 import type { StrategySignal } from "@/lib/strategy";
@@ -14,7 +15,9 @@ const timestamp = z.string().datetime();
 const record = <T extends z.ZodType>(schema: T) => z.record(z.string(), schema);
 export const bookSchema = z.object({
   cashKrw: nonnegative, positions: record(z.object({ quantity: positive.int(), averagePriceKrw: positive,
-    stopFraction: positive.max(0.08), partialTaken: z.boolean() })),
+    stopFraction: positive.max(0.08), partialTaken: z.boolean(),
+    averagePriceUsd: positive.optional(), buyFxUsdKrw: positive.nullable().optional(),
+    fxStatus: z.enum(["RECORDED", "UNAVAILABLE"]).optional() })),
   pending: record(z.object({ side: z.enum(["BUY", "SELL"]), decidedAt: timestamp, signalKey: z.string(), reason: z.string(),
     evidenceIds: z.array(z.string()), quantity: positive.int(), stopFraction: positive.max(0.08), partial: z.boolean(), referencePriceKrw: positive })),
   marks: record(z.object({ priceKrw: positive, at: timestamp })),
@@ -22,6 +25,10 @@ export const bookSchema = z.object({
   dailyBuy: z.object({ date: z.string(), notionalKrw: nonnegative }),
   fills: nonnegative.int(), closedLots: nonnegative.int(), feesKrw: nonnegative,
   peakNavKrw: positive, maxDrawdownPct: nonnegative, lastEvent: z.string(),
+  usFills: z.array(z.object({
+    at: timestamp, side: z.enum(["BUY", "SELL"]), key: z.string(), quantity: positive.int(), priceUsd: positive,
+    fxUsdKrw: positive.nullable().optional(), fxStatus: z.enum(["RECORDED", "UNAVAILABLE"]).optional(),
+  })).optional(),
 });
 const articleSchema = z.object({ id: z.string(), title: z.string(), url: z.string().url(), source: z.string(), feedId: z.string(),
   publishedAt: timestamp, firstSeenAt: timestamp, official: z.boolean() });
@@ -111,7 +118,7 @@ export function observeResearch(input: {
   const key = targetKey(input.target);
   if (next.decisions[key] && next.decisions[key].at >= input.at) return;
   const news = assessNews({ ...input, articles: next.articles, feeds: next.feeds });
-  const observation: ResearchObservation = { ...input, news };
+  const observation: ResearchObservation = { ...input, news, usdKrw: currentUsdKrwSnapshot().rate };
   const events = { price: advanceShadow(next.price as ShadowBook, observation, "price"), news: advanceShadow(next.news as ShadowBook, observation, "news") };
   const decision = { at: input.at, target: input.target, priceSide: input.signal.side,
     newsSide: news.side, reason: news.reason, evidenceIds: news.evidenceIds, fresh: news.fresh };

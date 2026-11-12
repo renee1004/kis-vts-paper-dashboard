@@ -25,6 +25,7 @@ import { enforceRiskExits, evaluateRebasedTrend, executeVtsMockOrder, reconcileA
 import { recordPerformance } from "@/lib/performance-history";
 import { marketRiskLimits, PAPER_CAPITAL_KRW } from "@/lib/trading-limits";
 import { observeResearch, refreshResearchNews, researchHeadlinesFor } from "@/lib/news-research";
+import { recordObservedUsdKrw, refreshUsdKrwRate } from "@/lib/fx-rate";
 
 const globalAgent = globalThis as typeof globalThis & {
   __vtsAgentTimer?: ReturnType<typeof setInterval>;
@@ -194,6 +195,28 @@ export async function runAgentCycle(): Promise<void> {
       addLog("ERROR", "뉴스 수집·저장 실패. 뉴스 비교 화면을 확인하세요.", "WARN");
     });
 
+    let domesticSynced = false;
+    let overseasSynced = false;
+    try {
+      const overseasBalance = await client.getOverseasBalance();
+      state.overseasPositions = overseasBalance.positions;
+      setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
+      if (overseasBalance.usdKrw != null) recordObservedUsdKrw(overseasBalance.usdKrw, "KIS_OVERSEAS_BALANCE");
+      overseasSynced = true;
+    } catch {
+      addLog(
+        "KIS_DIAGNOSTIC",
+        "해외 잔고 동기화 실패. 기존 해외 Position 원장을 유지합니다.",
+        "WARN",
+      );
+    }
+
+    try {
+      await refreshUsdKrwRate();
+    } catch {
+      addLog("INFO", "USD/KRW 환율 조회 실패. 미국 체결 환율은 미확인으로 기록합니다.", "WARN");
+    }
+
     try {
       await reconcileAgentOwnedFills(client);
     } catch {
@@ -204,8 +227,6 @@ export async function runAgentCycle(): Promise<void> {
       );
     }
 
-    let domesticSynced = false;
-    let overseasSynced = false;
     try {
       const balance = await client.getBalance();
       state.positions = balance.positions;
@@ -215,19 +236,6 @@ export async function runAgentCycle(): Promise<void> {
       addLog(
         "KIS_DIAGNOSTIC",
         "국내 잔고 동기화 실패. 기존 Position 원장을 유지합니다.",
-        "WARN",
-      );
-    }
-
-    try {
-      const overseasBalance = await client.getOverseasBalance();
-      state.overseasPositions = overseasBalance.positions;
-      setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
-      overseasSynced = true;
-    } catch {
-      addLog(
-        "KIS_DIAGNOSTIC",
-        "해외 잔고 동기화 실패. 기존 해외 Position 원장을 유지합니다.",
         "WARN",
       );
     }

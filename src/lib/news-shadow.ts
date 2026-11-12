@@ -4,11 +4,20 @@ import { targetKey, type NewsAssessment, type NewsTarget } from "@/lib/news-mode
 import { lastScheduledClose, marketSession } from "@/lib/market-calendar";
 
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW } from "@/lib/trading-limits";
+import { usFxPnlFromFills, type UsFxPnlView } from "@/lib/fx-pnl";
+import type { UsdKrwSnapshot } from "@/lib/fx-rate";
 export const SHADOW_CAPITAL = PAPER_CAPITAL_KRW;
 export const SHADOW_FX = 1500;
 export const SHADOW_FEE = 0.0015;
 export const SHADOW_SLIPPAGE = 0.001;
-export interface ShadowLot { quantity: number; averagePriceKrw: number; stopFraction: number; partialTaken: boolean }
+export interface ShadowLot {
+  quantity: number; averagePriceKrw: number; stopFraction: number; partialTaken: boolean;
+  averagePriceUsd?: number; buyFxUsdKrw?: number | null; fxStatus?: "RECORDED" | "UNAVAILABLE";
+}
+export interface ShadowUsFill {
+  at: string; side: "BUY" | "SELL"; key: string; quantity: number; priceUsd: number;
+  fxUsdKrw?: number | null; fxStatus?: "RECORDED" | "UNAVAILABLE";
+}
 export interface ShadowPending {
   side: "BUY" | "SELL"; decidedAt: string; signalKey: string; reason: string;
   evidenceIds: string[]; quantity: number; stopFraction: number; partial: boolean;
@@ -21,15 +30,27 @@ export interface ShadowBook {
   dailyBuy: { date: string; notionalKrw: number };
   fills: number; closedLots: number; feesKrw: number; peakNavKrw: number; maxDrawdownPct: number;
   lastEvent: string;
+  usFills?: ShadowUsFill[];
 }
 export interface ResearchObservation {
   target: NewsTarget; price: number; previousClose: number; at: string;
   signal: StrategySignal; news: NewsAssessment;
+  usdKrw?: number | null;
 }
 export function emptyBook(): ShadowBook {
   return { cashKrw: SHADOW_CAPITAL, positions: {}, pending: {}, marks: {}, usedBuySignals: {}, lastSoldSession: {},
     dailyBuy: { date: "", notionalKrw: 0 }, fills: 0, closedLots: 0, feesKrw: 0,
-    peakNavKrw: SHADOW_CAPITAL, maxDrawdownPct: 0, lastEvent: "아직 가상 체결 없음" };
+    peakNavKrw: SHADOW_CAPITAL, maxDrawdownPct: 0, lastEvent: "아직 가상 체결 없음", usFills: [] };
+}
+function recordShadowUsFill(book: ShadowBook, observation: ResearchObservation, side: "BUY" | "SELL",
+  key: string, quantity: number, priceUsd: number): { fxUsdKrw: number | null; fxStatus: "RECORDED" | "UNAVAILABLE" } {
+  const recorded = Number.isFinite(observation.usdKrw) && (observation.usdKrw as number) > 0;
+  const fxUsdKrw = recorded ? observation.usdKrw as number : null;
+  const fxStatus = recorded ? "RECORDED" as const : "UNAVAILABLE" as const;
+  if (observation.target.market !== "US_NASDAQ") return { fxUsdKrw: null, fxStatus: "UNAVAILABLE" };
+  book.usFills = book.usFills ?? [];
+  book.usFills.push({ at: observation.at, side, key, quantity, priceUsd, fxUsdKrw, fxStatus });
+  return { fxUsdKrw, fxStatus };
 }
 export function shadowMarkStale(key:string, mark:{at:string}|undefined, now:number, carryClosedMarketMarks=false):boolean {
   const time=Date.parse(mark?.at??"");
@@ -50,6 +71,19 @@ export function bookSummary(book: ShadowBook, now: number = Date.now(), carryClo
     feesKrw: book.feesKrw, maxDrawdownPct: book.maxDrawdownPct, pending: Object.keys(book.pending).length,
     staleMarks: lots.filter(([key]) => shadowMarkStale(key,book.marks[key],now,carryClosedMarketMarks)).length,
     lastEvent: book.lastEvent };
+}
+export function shadowBookUsFxPnl(book: ShadowBook, current: UsdKrwSnapshot): UsFxPnlView {
+  const fills = (book.usFills ?? []).map((fill) => ({
+    side: fill.side, quantity: fill.quantity, priceUsd: fill.priceUsd,
+    fxUsdKrw: fill.fxUsdKrw, fxRateStatus: fill.fxStatus,
+    stockCode: fill.key.includes(":") ? fill.key.split(":")[1] : fill.key,
+  }));
+  const marksUsd: Record<string, number> = {};
+  for (const [key, mark] of Object.entries(book.marks)) {
+    if (!key.startsWith("US_NASDAQ:")) continue;
+    marksUsd[key.slice("US_NASDAQ:".length)] = mark.priceKrw / SHADOW_FX;
+  }
+  return usFxPnlFromFills(fills, marksUsd, current);
 }
 /** Local hypothetical fills only. This module has no broker client or order transport. */
 export function advanceShadow(book: ShadowBook, observation: ResearchObservation, mode: "price" | "news",
@@ -87,7 +121,12 @@ export function advanceShadow(book: ShadowBook, observation: ResearchObservation
           Math.abs(observation.price / previousClose - 1) <= 0.02) {
         const cost = quantity * executionPrice, fee = cost * SHADOW_FEE;
         book.cashKrw -= cost + fee; book.feesKrw += fee; book.dailyBuy.notionalKrw += cost;
-        book.positions[key] = { quantity, averagePriceKrw: executionPrice, stopFraction: pending.stopFraction, partialTaken: false };
+        const executionUsd = observation.price * (1 + SHADOW_SLIPPAGE);
+        const fx = recordShadowUsFill(book, observation, "BUY", key, quantity, executionUsd);
+        book.positions[key] = { quantity, averagePriceKrw: executionPrice, stopFraction: pending.stopFraction, partialTaken: false,
+          averagePriceUsd: target.market === "US_NASDAQ" ? executionUsd : undefined,
+          buyFxUsdKrw: target.market === "US_NASDAQ" ? fx.fxUsdKrw : undefined,
+          fxStatus: target.market === "US_NASDAQ" ? fx.fxStatus : undefined };
         book.fills++; events.push(`가상 BUY ${quantity}주 · ${pending.reason}`);
       } else events.push("가상 매수 취소: 현재 신호·가격·예산·보유 조건 불충족");
     } else if (lot) {
@@ -95,6 +134,7 @@ export function advanceShadow(book: ShadowBook, observation: ResearchObservation
       if (quantity > 0) {
         const proceeds = quantity * executionPrice, fee = proceeds * SHADOW_FEE;
         book.cashKrw += proceeds - fee; book.feesKrw += fee; lot.quantity -= quantity; book.fills++;
+        recordShadowUsFill(book, observation, "SELL", key, quantity, observation.price * (1 - SHADOW_SLIPPAGE));
         if (pending.partial) lot.partialTaken = true;
         if (!lot.quantity) { delete book.positions[key]; book.closedLots++; }
         book.lastSoldSession[key] = session;
