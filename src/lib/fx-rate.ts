@@ -26,6 +26,7 @@ export interface UsdKrwSnapshot {
 
 export interface UsFillFxFields {
   market?: string;
+  filledQuantity?: number;
   fxUsdKrw?: number;
   fxRateStatus?: FxRateStatus;
   fxCapturedAt?: string;
@@ -216,10 +217,30 @@ export function recordObservedUsdKrw(
   return writeUsdKrwSnapshot(snapshot);
 }
 
-function cacheAgeMs(snapshot: UsdKrwSnapshot, now: number): number | null {
+export function cacheAgeMs(snapshot: UsdKrwSnapshot, now = Date.now()): number | null {
   const time = Date.parse(snapshot.capturedAt ?? "");
   if (!Number.isFinite(time) || time > now) return null;
   return now - time;
+}
+
+/** True only when the snapshot is AVAILABLE, in range, and younger than FX_CACHE_TTL_MS. */
+export function isFreshUsdKrwSnapshot(snapshot: UsdKrwSnapshot, now = Date.now()): boolean {
+  if (snapshot.status !== "AVAILABLE" || !finitePositive(snapshot.rate)) return false;
+  const age = cacheAgeMs(snapshot, now);
+  return age != null && age < FX_CACHE_TTL_MS;
+}
+
+/**
+ * Current-rate view for display and fill stamping.
+ * A stale cache is 미확인 — never a usable fill/current FX — while the file may still hold last-known.
+ */
+export function usableUsdKrwSnapshot(snapshot: UsdKrwSnapshot, now = Date.now()): UsdKrwSnapshot {
+  if (isFreshUsdKrwSnapshot(snapshot, now)) return snapshot;
+  return unavailableUsdKrwSnapshot(new Date(now).toISOString());
+}
+
+export function currentUsdKrwSnapshot(now = Date.now()): UsdKrwSnapshot {
+  return usableUsdKrwSnapshot(readUsdKrwSnapshot(), now);
 }
 
 async function fetchPublicUsdKrw(
@@ -248,7 +269,8 @@ async function fetchPublicUsdKrw(
 
 /**
  * Display/record FX only. Never returns USD_KRW_SAFETY_RATE as a stand-in.
- * Fresh cache is reused; a failed fetch keeps the last actual rate if one exists.
+ * Fresh cache is reused. A failed fetch does not return a stale AVAILABLE snapshot
+ * (last-known stays on disk for inspection; current/fill use is 미확인).
  */
 export async function refreshUsdKrwRate(options: {
   fetchImpl?: typeof fetch;
@@ -260,28 +282,69 @@ export async function refreshUsdKrwRate(options: {
   if (kis) return writeUsdKrwSnapshot(kis);
 
   const cached = readUsdKrwSnapshot();
-  const age = cached.status === "AVAILABLE" ? cacheAgeMs(cached, now) : null;
-  if (age != null && age < FX_CACHE_TTL_MS) return cached;
+  if (isFreshUsdKrwSnapshot(cached, now)) return cached;
 
   const fetched = await fetchPublicUsdKrw(options.fetchImpl ?? fetch, now);
   if (fetched) return writeUsdKrwSnapshot(fetched);
-  if (cached.status === "AVAILABLE" && finitePositive(cached.rate)) return cached;
+  if (cached.status === "AVAILABLE" && finitePositive(cached.rate)) {
+    return unavailableUsdKrwSnapshot(new Date(now).toISOString());
+  }
   return writeUsdKrwSnapshot(unavailableUsdKrwSnapshot(new Date(now).toISOString()));
 }
 
-export function stampUsFillFx<T extends UsFillFxFields>(order: T, snapshot: UsdKrwSnapshot): T {
+function applyRecordedFx<T extends UsFillFxFields>(
+  order: T,
+  rate: number,
+  snapshot: UsdKrwSnapshot,
+  at: string,
+): T {
+  order.fxUsdKrw = rate;
+  order.fxRateStatus = "RECORDED";
+  order.fxCapturedAt = snapshot.capturedAt ?? at;
+  order.fxSource = snapshot.source;
+  return order;
+}
+
+/**
+ * Stamp USD/KRW on a US fill. Stale snapshots are 미확인, not RECORDED.
+ * Later partial fills reweight the recorded rate by fill quantity.
+ * UNAVAILABLE may be upgraded to RECORDED when a fresh rate arrives (same-cycle KIS).
+ * A RECORDED rate is never replaced by UNAVAILABLE.
+ */
+export function stampUsFillFx<T extends UsFillFxFields>(
+  order: T,
+  snapshot: UsdKrwSnapshot,
+  options: { now?: number; previousFilledQuantity?: number } = {},
+): T {
   if (order.market !== "US_NASDAQ") return order;
-  if (order.fxRateStatus === "RECORDED" || order.fxRateStatus === "UNAVAILABLE") return order;
-  if (snapshot.status === "AVAILABLE" && finitePositive(snapshot.rate)) {
-    order.fxUsdKrw = snapshot.rate;
-    order.fxRateStatus = "RECORDED";
-    order.fxCapturedAt = snapshot.capturedAt ?? new Date().toISOString();
-    order.fxSource = snapshot.source;
-  } else {
-    order.fxRateStatus = "UNAVAILABLE";
-    order.fxCapturedAt = snapshot.capturedAt ?? new Date().toISOString();
-    order.fxSource = "NONE";
+  const now = options.now ?? Date.now();
+  const at = new Date(now).toISOString();
+  const usable = usableUsdKrwSnapshot(snapshot, now);
+  const filled = finitePositive(order.filledQuantity) ? order.filledQuantity : 0;
+  const previous = options.previousFilledQuantity ?? (
+    order.fxRateStatus === "RECORDED" || order.fxRateStatus === "UNAVAILABLE" ? filled : 0
+  );
+  const delta = Math.max(0, filled - previous);
+  const hasFreshRate = usable.status === "AVAILABLE" && finitePositive(usable.rate);
+
+  if (order.fxRateStatus === "RECORDED" && finitePositive(order.fxUsdKrw)) {
+    if (delta > 0 && hasFreshRate) {
+      const baseQty = previous > 0 ? previous : 0;
+      const qty = filled > 0 ? filled : baseQty + delta;
+      if (qty > 0) {
+        applyRecordedFx(order, (order.fxUsdKrw * baseQty + usable.rate * delta) / qty, usable, at);
+      }
+    }
+    return order;
   }
+
+  if (hasFreshRate) {
+    return applyRecordedFx(order, usable.rate, usable, at);
+  }
+  if (order.fxRateStatus === "UNAVAILABLE") return order;
+  order.fxRateStatus = "UNAVAILABLE";
+  order.fxCapturedAt = usable.capturedAt ?? at;
+  order.fxSource = "NONE";
   return order;
 }
 

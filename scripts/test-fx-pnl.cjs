@@ -129,6 +129,13 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.equal(fx.sanitizeUsdKrw(1500) != null, true);
   });
 
+  const stampNow = Date.parse('2026-11-12T12:00:00Z');
+  const freshAt = '2026-11-12T12:00:00Z';
+  const staleAt = '2026-11-12T11:50:00Z';
+  const freshSnap = (rate, at = freshAt) => ({
+    rate, capturedAt: at, source: 'DUNAMU', status: 'AVAILABLE',
+  });
+
   await testAsync('failed public fetch is 미확인 and never writes 1500 as a stand-in', async () => {
     const snapshot = await fx.refreshUsdKrwRate({
       fetchImpl: async () => { throw new Error('NETWORK_FORBIDDEN_IN_TEST'); },
@@ -142,26 +149,90 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.notEqual(cached.rate, 1500);
   });
 
-  test('stamp records actual FX once; later stamps do not overwrite', () => {
-    const order = { market: 'US_NASDAQ' };
-    fx.stampUsFillFx(order, {
-      rate: 1470, capturedAt: '2026-11-01T00:00:00Z', source: 'DUNAMU', status: 'AVAILABLE',
+  await testAsync('stale cache is not used as the current/fill rate when public sources fail', async () => {
+    fx.writeUsdKrwSnapshot({
+      rate: 1470, capturedAt: staleAt, source: 'DUNAMU', status: 'AVAILABLE',
     });
+    const snapshot = await fx.refreshUsdKrwRate({
+      fetchImpl: async () => { throw new Error('NETWORK_FORBIDDEN_IN_TEST'); },
+      now: stampNow,
+    });
+    assert.equal(snapshot.status, 'UNAVAILABLE');
+    assert.equal(snapshot.rate, null);
+    const cached = JSON.parse(fs.readFileSync(path.join(dir, fx.FX_CACHE_FILE), 'utf8'));
+    assert.equal(cached.rate, 1470);
+    assert.equal(cached.status, 'AVAILABLE');
+    const current = fx.currentUsdKrwSnapshot(stampNow);
+    assert.equal(current.status, 'UNAVAILABLE');
+    const order = { market: 'US_NASDAQ', filledQuantity: 1 };
+    fx.stampUsFillFx(order, fx.readUsdKrwSnapshot(), { now: stampNow });
+    assert.equal(order.fxRateStatus, 'UNAVAILABLE');
+    assert.equal(order.fxUsdKrw, undefined);
+  });
+
+  await testAsync('fresh cache is reused without treating 1,500 as a stand-in', async () => {
+    fx.writeUsdKrwSnapshot({
+      rate: 1347.5, capturedAt: freshAt, source: 'KIS_OVERSEAS_BALANCE', status: 'AVAILABLE',
+    });
+    const snapshot = await fx.refreshUsdKrwRate({
+      fetchImpl: async () => { throw new Error('NETWORK_FORBIDDEN_IN_TEST'); },
+      now: stampNow,
+    });
+    assert.equal(snapshot.status, 'AVAILABLE');
+    assert.equal(snapshot.rate, 1347.5);
+    assert.notEqual(snapshot.rate, 1500);
+  });
+
+  test('stamp records actual FX once; same-quantity later stamps do not overwrite', () => {
+    const order = { market: 'US_NASDAQ' };
+    fx.stampUsFillFx(order, freshSnap(1470), { now: stampNow });
     assert.equal(order.fxUsdKrw, 1470);
     assert.equal(order.fxRateStatus, 'RECORDED');
-    fx.stampUsFillFx(order, {
-      rate: 1300, capturedAt: '2026-11-02T00:00:00Z', source: 'DUNAMU', status: 'AVAILABLE',
-    });
+    fx.stampUsFillFx(order, freshSnap(1300), { now: stampNow });
     assert.equal(order.fxUsdKrw, 1470);
     const missing = { market: 'US_NASDAQ' };
-    fx.stampUsFillFx(missing, fx.unavailableUsdKrwSnapshot());
+    fx.stampUsFillFx(missing, fx.unavailableUsdKrwSnapshot(freshAt), { now: stampNow });
     assert.equal(missing.fxRateStatus, 'UNAVAILABLE');
     assert.equal(missing.fxUsdKrw, undefined);
     const domestic = { market: 'DOMESTIC' };
-    fx.stampUsFillFx(domestic, {
-      rate: 1470, capturedAt: '2026-11-01T00:00:00Z', source: 'DUNAMU', status: 'AVAILABLE',
-    });
+    fx.stampUsFillFx(domestic, freshSnap(1470), { now: stampNow });
     assert.equal(domestic.fxRateStatus, undefined);
+  });
+
+  test('later partial fills quantity-weight the recorded FX rate', () => {
+    const order = { market: 'US_NASDAQ', filledQuantity: 1 };
+    fx.stampUsFillFx(order, freshSnap(1470), { now: stampNow, previousFilledQuantity: 0 });
+    assert.equal(order.fxUsdKrw, 1470);
+    order.filledQuantity = 3;
+    fx.stampUsFillFx(order, freshSnap(1350), { now: stampNow, previousFilledQuantity: 1 });
+    assert.equal(order.fxUsdKrw, (1470 * 1 + 1350 * 2) / 3);
+    assert.equal(order.fxRateStatus, 'RECORDED');
+  });
+
+  test('same-cycle UNAVAILABLE stamp upgrades when a fresh KIS rate arrives', () => {
+    const order = { market: 'US_NASDAQ', filledQuantity: 1 };
+    fx.stampUsFillFx(order, fx.unavailableUsdKrwSnapshot(freshAt), {
+      now: stampNow, previousFilledQuantity: 0,
+    });
+    assert.equal(order.fxRateStatus, 'UNAVAILABLE');
+    fx.stampUsFillFx(order, {
+      rate: 1340, capturedAt: freshAt, source: 'KIS_OVERSEAS_BALANCE', status: 'AVAILABLE',
+    }, { now: stampNow, previousFilledQuantity: 1 });
+    assert.equal(order.fxRateStatus, 'RECORDED');
+    assert.equal(order.fxUsdKrw, 1340);
+    assert.equal(order.fxSource, 'KIS_OVERSEAS_BALANCE');
+  });
+
+  test('agent cycle records KIS overseas FX before fill reconcile', () => {
+    const agent = fs.readFileSync(path.join(__dirname, '..', 'src/lib/agent.ts'), 'utf8');
+    const cycle = agent.split('export async function runAgentCycle')[1];
+    const overseasAt = cycle.indexOf('getOverseasBalance');
+    const recordAt = cycle.indexOf('recordObservedUsdKrw');
+    const refreshAt = cycle.indexOf('refreshUsdKrwRate');
+    const reconcileAt = cycle.indexOf('reconcileAgentOwnedFills');
+    assert.ok(overseasAt >= 0 && recordAt > overseasAt);
+    assert.ok(refreshAt > recordAt);
+    assert.ok(reconcileAt > refreshAt);
   });
 
   test('strategy valuation still converts US fills at 1,500, not the recorded rate', () => {
@@ -189,7 +260,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
 
   await testAsync('US fill reconcile stamps cached FX and not 1,500 when missing', async () => {
     fx.writeUsdKrwSnapshot({
-      rate: 1470, capturedAt: '2026-11-10T00:00:00Z', source: 'DUNAMU', status: 'AVAILABLE',
+      rate: 1470, capturedAt: new Date().toISOString(), source: 'DUNAMU', status: 'AVAILABLE',
     });
     state.vtsOrders = [{
       id: 'pending-us', timestamp: '2026-11-10T14:00:00Z', orderDate: '20261110',
@@ -221,6 +292,38 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     });
     assert.equal(state.vtsOrders[0].fxRateStatus, 'UNAVAILABLE');
     assert.equal(state.vtsOrders[0].fxUsdKrw, undefined);
+  });
+
+  await testAsync('reconcile reweights FX when a US order fills in two slices', async () => {
+    fx.writeUsdKrwSnapshot({
+      rate: 1470, capturedAt: new Date().toISOString(), source: 'DUNAMU', status: 'AVAILABLE',
+    });
+    state.vtsOrders = [{
+      id: 'partial-us', timestamp: new Date().toISOString(), orderDate: '20990101',
+      market: 'US_NASDAQ', stockCode: 'AAPL', stockName: 'Apple', side: 'BUY',
+      quantity: 3, filledQuantity: 0, referencePrice: 100, averageFillPrice: undefined,
+      status: 'SUBMITTED', kisOrderNo: '99', kisBranchNo: '1', ownershipScope: 'AGENT_CREATED_ONLY',
+    }];
+    await execution.reconcileAgentOwnedFills({
+      getOverseasTodayExecutions: async () => [{
+        orderDate: '20990101', orderNo: '99', branchNo: '1', stockCode: 'AAPL',
+        filledQuantity: 1, averageFillPrice: 100,
+      }],
+    });
+    assert.equal(state.vtsOrders[0].filledQuantity, 1);
+    assert.equal(state.vtsOrders[0].fxUsdKrw, 1470);
+    fx.writeUsdKrwSnapshot({
+      rate: 1350, capturedAt: new Date().toISOString(), source: 'DUNAMU', status: 'AVAILABLE',
+    });
+    await execution.reconcileAgentOwnedFills({
+      getOverseasTodayExecutions: async () => [{
+        orderDate: '20990101', orderNo: '99', branchNo: '1', stockCode: 'AAPL',
+        filledQuantity: 3, averageFillPrice: 100,
+      }],
+    });
+    assert.equal(state.vtsOrders[0].filledQuantity, 3);
+    assert.equal(state.vtsOrders[0].status, 'FILLED');
+    assert.equal(state.vtsOrders[0].fxUsdKrw, (1470 * 1 + 1350 * 2) / 3);
   });
 
   test('virtual comparison ledger records fill FX; sizing still uses 1,500', () => {

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { assessNews, matchNews, NEWS_VERSION, targetKey, type NewsArticle, type NewsFeed, type NewsTarget } from "@/lib/news-model";
-import { readUsdKrwSnapshot } from "@/lib/fx-rate";
+import { currentUsdKrwSnapshot } from "@/lib/fx-rate";
 import { feedSpecs, fetchNewsFeed } from "@/lib/news-feeds";
 import { advanceShadow, bookSummary, emptyBook, type ResearchObservation, type ShadowBook } from "@/lib/news-shadow";
 import type { StrategySignal } from "@/lib/strategy";
@@ -118,7 +118,7 @@ export function observeResearch(input: {
   const key = targetKey(input.target);
   if (next.decisions[key] && next.decisions[key].at >= input.at) return;
   const news = assessNews({ ...input, articles: next.articles, feeds: next.feeds });
-  const observation: ResearchObservation = { ...input, news, usdKrw: readUsdKrwSnapshot().rate };
+  const observation: ResearchObservation = { ...input, news, usdKrw: currentUsdKrwSnapshot().rate };
   const events = { price: advanceShadow(next.price as ShadowBook, observation, "price"), news: advanceShadow(next.news as ShadowBook, observation, "news") };
   const decision = { at: input.at, target: input.target, priceSide: input.signal.side,
     newsSide: news.side, reason: news.reason, evidenceIds: news.evidenceIds, fresh: news.fresh };

@@ -14,7 +14,7 @@ import { CAPITAL_BASIS, INITIAL_ACCOUNT_BALANCE_KRW } from "@/lib/trading-limits
 import { sevenDayPerformance } from "@/lib/performance-history";
 import { MARKET_CALENDAR_INFO, marketSession } from "@/lib/market-calendar";
 import { calendarCrosscheckView } from "@/lib/research-display";
-import { FX_LIMITS_NOTE, formatUsdKrwDisplay, readUsdKrwSnapshot } from "@/lib/fx-rate";
+import { FX_LIMITS_NOTE, formatUsdKrwDisplay, currentUsdKrwSnapshot } from "@/lib/fx-rate";
 import { usFxPnlFromOrders } from "@/lib/fx-pnl";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function GET() {
   const overseasDecision = getOrderDecision("US_NASDAQ");
   const kis = getPublicKisConfig();
   const valuation = strategyValuation();
-  const usdKrw = readUsdKrwSnapshot();
+  const usdKrw = currentUsdKrwSnapshot();
   const usMarks = Object.fromEntries(
     state.overseasPositions
       .filter((position) => position.currentPrice > 0)

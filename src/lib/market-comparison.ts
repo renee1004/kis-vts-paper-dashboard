@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { bookSchema, refreshResearchNews, researchView } from "./news-research";
 import { bookSummary, shadowBookUsFxPnl, shadowMarkStale, SHADOW_CAPITAL, SHADOW_FX } from "./news-shadow";
-import { FX_LIMITS_NOTE, formatUsdKrwDisplay, readUsdKrwSnapshot, refreshUsdKrwRate } from "./fx-rate";
+import { FX_LIMITS_NOTE, formatUsdKrwDisplay, currentUsdKrwSnapshot, refreshUsdKrwRate } from "./fx-rate";
 import { usFxPnlFromFills } from "./fx-pnl";
 import { assessNews, targetKey, type NewsTarget } from "./news-model";
 import { analyzeTrend } from "./strategy";
@@ -144,7 +144,7 @@ export function stopMarketComparison():void {
   if(runtime.__marketComparisonTimer) clearInterval(runtime.__marketComparisonTimer);
   runtime.__marketComparisonTimer=undefined;
 }
-function passiveUsFxPnl(lot:StoredComparison["passive"]["US_NASDAQ"], currentFx:ReturnType<typeof readUsdKrwSnapshot>){
+function passiveUsFxPnl(lot:StoredComparison["passive"]["US_NASDAQ"], currentFx:ReturnType<typeof currentUsdKrwSnapshot>){
   if(lot.quantity<=0) return usFxPnlFromFills([], {}, currentFx);
   const hasUsd=lot.averagePriceUsd!=null;
   const priceUsd=lot.averagePriceUsd??lot.averagePriceKrw/SHADOW_FX;
@@ -156,7 +156,7 @@ function passiveUsFxPnl(lot:StoredComparison["passive"]["US_NASDAQ"], currentFx:
   }], markUsd?{SPY:markUsd}:{}, currentFx);
 }
 export function marketComparisonView(){
-  const current=getState(),now=Date.now(),usdKrw=readUsdKrwSnapshot();
+  const current=getState(),now=Date.now(),usdKrw=currentUsdKrwSnapshot();
   const summary=(book:StoredComparison["base"])=>{
     const result=bookSummary(book,now,true), ready=!!current.eligibleSince&&!result.staleMarks;
     return {...result,navKrw:ready?result.navKrw:null,returnPct:ready?result.returnPct:null,usFxPnl:shadowBookUsFxPnl(book,usdKrw)};

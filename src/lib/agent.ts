@@ -195,6 +195,22 @@ export async function runAgentCycle(): Promise<void> {
       addLog("ERROR", "뉴스 수집·저장 실패. 뉴스 비교 화면을 확인하세요.", "WARN");
     });
 
+    let domesticSynced = false;
+    let overseasSynced = false;
+    try {
+      const overseasBalance = await client.getOverseasBalance();
+      state.overseasPositions = overseasBalance.positions;
+      setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
+      if (overseasBalance.usdKrw != null) recordObservedUsdKrw(overseasBalance.usdKrw, "KIS_OVERSEAS_BALANCE");
+      overseasSynced = true;
+    } catch {
+      addLog(
+        "KIS_DIAGNOSTIC",
+        "해외 잔고 동기화 실패. 기존 해외 Position 원장을 유지합니다.",
+        "WARN",
+      );
+    }
+
     try {
       await refreshUsdKrwRate();
     } catch {
@@ -211,8 +227,6 @@ export async function runAgentCycle(): Promise<void> {
       );
     }
 
-    let domesticSynced = false;
-    let overseasSynced = false;
     try {
       const balance = await client.getBalance();
       state.positions = balance.positions;
@@ -222,20 +236,6 @@ export async function runAgentCycle(): Promise<void> {
       addLog(
         "KIS_DIAGNOSTIC",
         "국내 잔고 동기화 실패. 기존 Position 원장을 유지합니다.",
-        "WARN",
-      );
-    }
-
-    try {
-      const overseasBalance = await client.getOverseasBalance();
-      state.overseasPositions = overseasBalance.positions;
-      setOverseasBalanceSnapshot(toOverseasBalanceSnapshot(overseasBalance));
-      if (overseasBalance.usdKrw != null) recordObservedUsdKrw(overseasBalance.usdKrw, "KIS_OVERSEAS_BALANCE");
-      overseasSynced = true;
-    } catch {
-      addLog(
-        "KIS_DIAGNOSTIC",
-        "해외 잔고 동기화 실패. 기존 해외 Position 원장을 유지합니다.",
         "WARN",
       );
     }
