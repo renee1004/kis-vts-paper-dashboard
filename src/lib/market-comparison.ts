@@ -173,7 +173,7 @@ export function marketComparisonView(){
     base:summary(current.base),filtered:summary(current.filtered),
     passive:{navKrw:passiveNav,returnPct:passiveNav==null?null:(passiveNav/SHADOW_CAPITAL-1)*100,markets:passiveRows,usFxPnl:passiveUsFxPnl(current.passive.US_NASDAQ,usdKrw)},
     excursionCount:current.excursions.length,excursions:current.excursions.slice(-30),executionMode:"LOCAL_SHADOW_ONLY" as const,
-    assumptions:{budgetKrw:SHADOW_CAPITAL,usdKrw:1500,usdKrwSpot:{rate:usdKrw.rate,display:formatUsdKrwDisplay(usdKrw),capturedAt:usdKrw.capturedAt,source:usdKrw.source,status:usdKrw.status},
+    assumptions:{budgetKrw:SHADOW_CAPITAL,usdKrw:SHADOW_FX,usdKrwSpot:{rate:usdKrw.rate,display:formatUsdKrwDisplay(usdKrw),capturedAt:usdKrw.capturedAt,source:usdKrw.source,status:usdKrw.status},
       costBpsPerSide:15,slippageBpsPerSide:10,samplingSeconds:300,benchmarkSymbols:BENCHMARK_SYMBOLS,limitsNote:FX_LIMITS_NOTE}};
 }
 export type MarketComparisonView=ReturnType<typeof marketComparisonView>;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FX_ASSUMPTION_SOURCE, USD_KRW_SAFETY_RATE } from "@/lib/domain";
 
 type Holding = {
   market: string; stockCode: string; stockName: string;
@@ -37,11 +38,11 @@ export function RiskContributionPanel() {
   const missing = !risk || risk.stale || !holdings.length;
   return <Card>
     <CardHeader><CardTitle>집중도·위험기여 (표시·연구 전용)</CardTitle>
-      <CardDescription>보유 평가금액 비중과 포트폴리오 분산 기여입니다. 주문 방향·수량·제출 여부에 쓰지 않습니다. 달러는 앱과 같은 1,500원 가정으로 환산합니다.</CardDescription></CardHeader>
+      <CardDescription>보유 평가금액 비중과 포트폴리오 분산 기여입니다. 주문 방향·수량·제출 여부에 쓰지 않습니다. 달러는 앱과 같은 {USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원 가정으로 환산합니다.</CardDescription></CardHeader>
     <CardContent className="space-y-3 text-sm">
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <p className="text-xs text-muted-foreground">
-        환율 {risk?.usdKrw ?? 1500}원 [{risk?.fxSource ?? "FIXED_1500_NOT_ACTUAL_FX"}]
+        환율 {risk?.usdKrw ?? USD_KRW_SAFETY_RATE}원 [{risk?.fxSource ?? FX_ASSUMPTION_SOURCE}]
         {risk?.riskSource ? ` · 계산 ${risk.riskSource}` : ""}
         {risk?.stale ? " · 수집이 오래되어 미확인" : ""}
       </p>

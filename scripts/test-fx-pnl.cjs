@@ -86,33 +86,36 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.equal(view.totals.stockPnlUsd, 0);
   });
 
-  test('unavailable lookup is 미확인, not 1,500', () => {
+  test('unavailable lookup is 미확인, not 1,400', () => {
     const view = pnl.usFxPnlFromFills([{
       side: 'BUY', quantity: 1, priceUsd: 10, fxRateStatus: 'UNAVAILABLE', stockCode: 'MSFT', stockName: 'Microsoft',
     }], { MSFT: 10 }, fx.unavailableUsdKrwSnapshot('2026-01-01T00:00:00Z'));
     assert.equal(view.open[0].fxNote, '미확인');
     assert.equal(view.open[0].buyFxLabel, '미확인');
     assert.equal(view.currentFx.label, '미확인');
-    assert.notEqual(view.currentFx.label, '1,500');
-    assert.equal(view.limitsUseSafetyRate, 1500);
+    assert.notEqual(view.currentFx.label, '1,400');
+    assert.equal(view.limitsUseSafetyRate, 1400);
   });
 
-  test('order limits, daily cap and name fraction still use 1,500', () => {
-    assert.equal(domain.USD_KRW_SAFETY_RATE, 1500);
-    assert.equal(limits.DAILY_BUY_CAP_KRW, 3000 * 1500);
-    assert.equal(limits.marketRiskLimits('US_NASDAQ').orderCapKrw, 3000 * 1500);
+  test('order limits and name fraction use 1,400; daily cap stays 4,500,000 KRW', () => {
+    assert.equal(domain.USD_KRW_SAFETY_RATE, 1400);
+    assert.equal(limits.DAILY_BUY_CAP_KRW, 4_500_000);
+    assert.notEqual(limits.DAILY_BUY_CAP_KRW, 3000 * 1400);
+    assert.equal(limits.US_ORDER_CAP_USD, 3000);
+    assert.equal(limits.marketRiskLimits('US_NASDAQ').orderCapKrw, 3000 * 1400);
     assert.equal(limits.marketRiskLimits('US_NASDAQ').nameFraction, 0.15);
+    assert.equal(limits.marketRiskLimits('DOMESTIC').orderCapKrw, 3_000_000);
     assert.equal(domain.buyNotionalKrw({
       side: 'BUY', status: 'FILLED', quantity: 1, filledQuantity: 1, referencePrice: 10, currency: 'USD',
-    }), 10 * 1500);
+    }), 10 * 1400);
     assert.equal(sizeForRisk({
-      budget: 30e6, price: 3000 * 1500, stopFraction: 0.08, committed: 0, dailyRemaining: 4.5e6,
+      budget: 30e6, price: 3000 * 1400, stopFraction: 0.08, committed: 0, dailyRemaining: 4.5e6,
     }, 'US_NASDAQ'), 1);
     assert.equal(sizeForRisk({
-      budget: 30e6, price: 3000.01 * 1500, stopFraction: 0.08, committed: 0, dailyRemaining: 4.5e6,
+      budget: 30e6, price: 3000.01 * 1400, stopFraction: 0.08, committed: 0, dailyRemaining: 4.5e6,
     }, 'US_NASDAQ'), 0);
-    assert.equal(SHADOW_FX, 1500);
-    assert.equal(execution.VTS_ORDER_LIMITS.usdKrwSafetyRate, 1500);
+    assert.equal(SHADOW_FX, 1400);
+    assert.equal(execution.VTS_ORDER_LIMITS.usdKrwSafetyRate, 1400);
   });
 
   test('KIS payload extracts frst_bltn_exrt and ignores summary P&L totals', () => {
@@ -136,7 +139,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     rate, capturedAt: at, source: 'DUNAMU', status: 'AVAILABLE',
   });
 
-  await testAsync('failed public fetch is 미확인 and never writes 1500 as a stand-in', async () => {
+  await testAsync('failed public fetch is 미확인 and never writes 1400 as a stand-in', async () => {
     const snapshot = await fx.refreshUsdKrwRate({
       fetchImpl: async () => { throw new Error('NETWORK_FORBIDDEN_IN_TEST'); },
       now: Date.parse('2026-11-12T00:00:00Z'),
@@ -146,7 +149,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.equal(fx.formatUsdKrwDisplay(snapshot), '미확인');
     const cached = JSON.parse(fs.readFileSync(path.join(dir, fx.FX_CACHE_FILE), 'utf8'));
     assert.equal(cached.rate, null);
-    assert.notEqual(cached.rate, 1500);
+    assert.notEqual(cached.rate, 1400);
   });
 
   await testAsync('stale cache is not used as the current/fill rate when public sources fail', async () => {
@@ -170,7 +173,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.equal(order.fxUsdKrw, undefined);
   });
 
-  await testAsync('fresh cache is reused without treating 1,500 as a stand-in', async () => {
+  await testAsync('fresh cache is reused without treating 1,400 as a stand-in', async () => {
     fx.writeUsdKrwSnapshot({
       rate: 1347.5, capturedAt: freshAt, source: 'KIS_OVERSEAS_BALANCE', status: 'AVAILABLE',
     });
@@ -180,7 +183,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     });
     assert.equal(snapshot.status, 'AVAILABLE');
     assert.equal(snapshot.rate, 1347.5);
-    assert.notEqual(snapshot.rate, 1500);
+    assert.notEqual(snapshot.rate, 1400);
   });
 
   test('stamp records actual FX once; same-quantity later stamps do not overwrite', () => {
@@ -235,7 +238,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.ok(reconcileAt > refreshAt);
   });
 
-  test('strategy valuation still converts US fills at 1,500, not the recorded rate', () => {
+  test('strategy valuation still converts US fills at 1,400, not the recorded rate', () => {
     state.vtsOrders = [{
       id: 'us-buy', timestamp: '2026-11-01T00:00:00Z', orderDate: '20261101',
       market: 'US_NASDAQ', stockCode: 'AAPL', stockName: 'Apple', side: 'BUY',
@@ -252,13 +255,13 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     state.overseasPositions = [];
     state.overseasBalanceSnapshot = null;
     const valuation = execution.strategyValuation();
-    const buy = 100 * 1500;
+    const buy = 100 * 1400;
     const expected = (-buy - buy * 0.0015) + (buy - buy * 0.0015);
     assert.equal(valuation.pnl, expected);
     assert.notEqual(valuation.pnl, 100 * (1350 - 1470));
   });
 
-  await testAsync('US fill reconcile stamps cached FX and not 1,500 when missing', async () => {
+  await testAsync('US fill reconcile stamps cached FX and not 1,400 when missing', async () => {
     fx.writeUsdKrwSnapshot({
       rate: 1470, capturedAt: new Date().toISOString(), source: 'DUNAMU', status: 'AVAILABLE',
     });
@@ -326,7 +329,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     assert.equal(state.vtsOrders[0].fxUsdKrw, (1470 * 1 + 1350 * 2) / 3);
   });
 
-  test('virtual comparison ledger records fill FX; sizing still uses 1,500', () => {
+  test('virtual comparison ledger records fill FX; sizing still uses 1,400', () => {
     const book = emptyBook();
     const target = { market: 'US_NASDAQ', stockCode: 'AAPL', stockName: 'Apple' };
     const signal = { side: 'BUY', reason: 'fixture', signalDate: '20260909', confidence: 100, buyScore: 100, sellScore: 0, stopFraction: 0.05 };
@@ -335,7 +338,7 @@ const buy1470sell1350 = pnl.stockAndFxPnl({
     advanceShadow(book, obs, 'price');
     advanceShadow(book, { ...obs, at: '2026-09-10T14:01:00.000Z' }, 'price');
     const lot = book.positions['US_NASDAQ:AAPL'];
-    assert.ok(lot.quantity * 150150 <= 4500000);
+    assert.ok(lot.quantity * 140140 <= 4500000);
     assert.equal(lot.buyFxUsdKrw, 1470);
     assert.equal(lot.fxStatus, 'RECORDED');
     assert.equal(book.usFills[0].fxUsdKrw, 1470);

@@ -79,7 +79,7 @@ if(require.main===module){
   if(!process.argv[2])throw Error('Usage: node scripts/backtest.cjs DATASET.json [REPORT.json]');
   const dataset=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
   const report={strategy:STRATEGY_VERSION,validationStatus:'UNVALIDATED_PAPER_ONLY',
-    assumptions:{initialCapitalKrw:PAPER_CAPITAL_KRW,dailyBuyCapKrw:DAILY_BUY_CAP_KRW,costBpsPerSide:15,slippageBpsPerSide:10,fx:'Fixed 1500 KRW/USD; not actual currency returns',
+    assumptions:{initialCapitalKrw:PAPER_CAPITAL_KRW,dailyBuyCapKrw:DAILY_BUY_CAP_KRW,costBpsPerSide:15,slippageBpsPerSide:10,fx:'Fixed 1400 KRW/USD; not actual currency returns',
       description:'Daily next-open approximation using adjusted OHLC; dividends approximated by adjustment. Shared new risk limits for candidate and old signal. Not a full replay of old bugs or minute-by-minute risk exits.',
       limitations:['Chosen current watchlist has survivorship/selection bias','No order-book liquidity, KIS fill or partial-fill simulation','No point-in-time constituent universe','No intraday daily-loss trigger simulation','Historical comparison inspected during development, not an untouched holdout or prospective validation','Mixed-market daily ordering is an approximation, not timestamp-accurate execution','Costs are assumptions, not broker/tax schedules']},results:[]};
   for(const [start,end] of [['20180101','20211231'],['20220101','20260910']])

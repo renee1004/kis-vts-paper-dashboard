@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { USD_KRW_SAFETY_RATE } from "@/lib/domain";
 
 export const FX_CACHE_FILE = "usd-krw-rate.json";
 export const FX_CACHE_TTL_MS = 5 * 60_000;
@@ -8,7 +9,7 @@ export const USD_KRW_MAX = 2_500;
 export const FX_UNAVAILABLE_LABEL = "미확인";
 export const FX_UNRECORDED_LABEL = "환율 미기록";
 export const FX_LIMITS_NOTE =
-  "주문 한도·종목 비중·일일 매수 한도는 보수적 1 USD = 1,500원 환산을 유지합니다. 실제 환율은 표시·기록 전용입니다.";
+  `주문 한도·종목 비중은 보수적 1 USD = ${USD_KRW_SAFETY_RATE.toLocaleString("ko-KR")}원 환산을 유지합니다. 일일 매수 한도는 4,500,000원 고정(원화 절대값)이며 환율에 연동하지 않습니다. 실제 환율은 표시·기록 전용입니다.`;
 
 export type FxRateStatus = "RECORDED" | "UNAVAILABLE";
 export type UsdKrwSource =
@@ -98,7 +99,7 @@ function walkObjects(value: unknown, visit: (row: Record<string, unknown>) => vo
   }
 }
 
-/** Prefer KIS overseas-balance / present-balance FX fields. Never infers 1,500. */
+/** Prefer KIS overseas-balance / present-balance FX fields. Never infers USD_KRW_SAFETY_RATE. */
 export function extractUsdKrwFromKisPayload(payload: unknown): number | null {
   let found: number | null = null;
   walkObjects(payload, (row) => {

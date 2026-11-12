@@ -95,7 +95,7 @@ async function main() {
     advanceShadow(book, next, 'price'); assert.equal(book.fills, 1);
     advanceShadow(book, next, 'price'); assert.equal(book.fills, 1);
     assert.ok(book.feesKrw > 0); assert.ok(bookSummary(book).navKrw < 30_000_000);
-    assert.ok(book.positions['US_NASDAQ:AAPL'].quantity * 150150 <= 4500000);
+    assert.ok(book.positions['US_NASDAQ:AAPL'].quantity * 140140 <= 4500000);
   });
   test('price and news books diverge only from news filter under identical prices', () => {
     const a = emptyBook(), b = emptyBook(), obs = { ...observation(), news: assessNews({ ...input, articles: [] }) };

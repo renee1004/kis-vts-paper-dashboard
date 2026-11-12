@@ -95,8 +95,8 @@ check('calendar-crosscheck JSON is reformatted and stale files become 미확인'
 check('risk-contribution JSON renders 미확인 for missing vol/RC and empty files', () => {
   assert.equal(research.riskContributionView().holdings.length, 0);
   fs.writeFileSync(path.join(testDir, 'risk-contribution.json'), JSON.stringify({
-    version: 1, generatedAt: new Date().toISOString(), displayOnly: true, usdKrw: 1500,
-    fxSource: 'FIXED_1500_NOT_ACTUAL_FX',
+    version: 1, generatedAt: new Date().toISOString(), displayOnly: true, usdKrw: 1400,
+    fxSource: 'FIXED_1400_NOT_ACTUAL_FX',
     holdings: [
       { market: 'DOMESTIC', stockCode: '005930', stockName: '삼성전자', evaluationKrw: 700000, weightPct: 70, volatilityPct: 28.1, riskContributionPct: 80, theme: '반도체' },
       { market: 'US_NASDAQ', stockCode: 'AAPL', stockName: 'Apple', evaluationKrw: 300000, weightPct: 30, volatilityPct: null, riskContributionPct: null, theme: null },
@@ -121,9 +121,9 @@ check('research holdings snapshot stores evaluation only and uses the app FX rat
     usdKrw: USD_KRW_SAFETY_RATE, domesticSynced: true, overseasSynced: true,
   });
   const snapshot = JSON.parse(fs.readFileSync(path.join(testDir, 'research-holdings.json'), 'utf8'));
-  assert.equal(snapshot.usdKrw, 1500);
-  assert.equal(snapshot.fxSource, 'FIXED_1500_NOT_ACTUAL_FX');
-  assert.equal(snapshot.holdings[1].evaluationKrw, 15000);
+  assert.equal(snapshot.usdKrw, 1400);
+  assert.equal(snapshot.fxSource, 'FIXED_1400_NOT_ACTUAL_FX');
+  assert.equal(snapshot.holdings[1].evaluationKrw, 14000);
   assert.deepEqual(snapshot.syncedMarkets, ['DOMESTIC', 'US_NASDAQ']);
   assert.equal(JSON.stringify(snapshot).includes('account'), false);
   assert.equal(JSON.stringify(snapshot).includes('KIS_'), false);

@@ -3,11 +3,12 @@ import { domesticMarketDate, usMarketDate, isDomesticRegularMarketOpen, isUsRegu
 import { targetKey, type NewsAssessment, type NewsTarget } from "@/lib/news-model";
 import { lastScheduledClose, marketSession } from "@/lib/market-calendar";
 
+import { USD_KRW_SAFETY_RATE } from "@/lib/domain";
 import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW } from "@/lib/trading-limits";
 import { usFxPnlFromFills, type UsFxPnlView } from "@/lib/fx-pnl";
 import type { UsdKrwSnapshot } from "@/lib/fx-rate";
 export const SHADOW_CAPITAL = PAPER_CAPITAL_KRW;
-export const SHADOW_FX = 1500;
+export const SHADOW_FX = USD_KRW_SAFETY_RATE;
 export const SHADOW_FEE = 0.0015;
 export const SHADOW_SLIPPAGE = 0.001;
 export interface ShadowLot {

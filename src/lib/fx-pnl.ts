@@ -1,4 +1,4 @@
-import type { VtsOrder } from "@/lib/domain";
+import { USD_KRW_SAFETY_RATE, type VtsOrder } from "@/lib/domain";
 import {
   FX_LIMITS_NOTE,
   FX_UNAVAILABLE_LABEL,
@@ -57,7 +57,7 @@ export interface UsFxPnlView {
   closed: UsFxPnlRow[];
   totals: FxPnlParts & { complete: boolean };
   currentFx: { rate: number | null; label: string; capturedAt: string | null; source: string };
-  limitsUseSafetyRate: 1500;
+  limitsUseSafetyRate: typeof USD_KRW_SAFETY_RATE;
 }
 
 interface OpenBuy {
@@ -168,7 +168,7 @@ function emptyView(current: UsdKrwSnapshot): UsFxPnlView {
       capturedAt: current.capturedAt,
       source: current.source,
     },
-    limitsUseSafetyRate: 1500,
+    limitsUseSafetyRate: USD_KRW_SAFETY_RATE,
   };
 }
 
