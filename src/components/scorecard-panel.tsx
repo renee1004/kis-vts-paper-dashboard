@@ -93,6 +93,9 @@ export function ScorecardPanel() {
       <CardDescription>모의(VTS) 주문은 추세 돌파 전략이 판단합니다. 점수판 결론(매수검토·전량매도 포함)과 PSR·WTI 참고값은 주문 방향·수량·제출 여부에 쓰지 않습니다. 모든 주문은 기존 안전 잠금을 그대로 거칩니다.
         {cutover && ` 라이브 엔진: ${cutover.version ?? "trend-breakout-v2"} · 복원 ${new Date(cutover.cutoverAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} (점수판 ${cutover.scorecardVersion ?? cutover.previousVersion}은 표시 전용)`}</CardDescription></CardHeader>
     <CardContent className="space-y-3">
+      <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm">
+        점수는 연구·표시용이며 승률이나 수익 확률이 아닙니다. 주문에 사용되지 않습니다.
+      </p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <CalendarMismatchWarning messages={calendar.messages} stale={calendar.stale} unavailable={calendar.unavailable} />
       <ReferenceNotes psr={card?.references?.psr} crudeOil={crudeOil} />

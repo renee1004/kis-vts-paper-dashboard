@@ -48,6 +48,19 @@ check('live paper-order engine is restored trend-breakout-v2, not the scorecard'
   assert.equal(DEFAULT_SAFETY_SETTINGS.allowRealOverseasOrder, false);
 });
 
+check('docs name live v2, 30,000,000 KRW capital30m, and port 3939', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const review = fs.readFileSync(path.join(root, 'docs/STRATEGY-REVIEW.md'), 'utf8');
+  assert.equal(readme.includes('localhost:3000'), false);
+  assert.ok(readme.includes('localhost:3939'));
+  assert.ok(readme.includes('trend-breakout-v2-capital30m-unvalidated'));
+  assert.equal(readme.includes('trend-breakout-v1-unvalidated'), false);
+  assert.ok(readme.includes('30,000,000원'));
+  assert.ok(readme.includes('completedBars'));
+  assert.equal(review.includes('## 후보 규칙 (trend-breakout-v1-unvalidated)'), false);
+  assert.ok(review.includes('## 라이브 규칙 (trend-breakout-v2-capital30m-unvalidated)'));
+});
+
 check('BUY trend side/confidence/stop are unchanged by scorecard conclusions or PSR/WTI', () => {
   assert.equal(buy.side, 'BUY');
   assert.equal(sc.conclusionToOrderSide('전량매도'), 'SELL');
@@ -108,6 +121,8 @@ check('agent order path uses trend intent; scorecard conclusions do not set side
   assert.equal(/from ["']@\/lib\/scorecard["']/.test(vts), false);
   const panel = fs.readFileSync(path.join(root, 'src/components/scorecard-panel.tsx'), 'utf8');
   assert.ok(panel.includes('표시·연구 전용'));
+  assert.ok(panel.includes('점수는 연구·표시용이며 승률이나 수익 확률이 아닙니다. 주문에 사용되지 않습니다.'));
+  assert.ok(panel.includes('role="status"'));
   assert.equal(panel.includes('모의주문 판단은 점수판 결론으로 합니다'), false);
 });
 
