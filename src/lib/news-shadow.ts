@@ -8,6 +8,8 @@ import { PAPER_CAPITAL_KRW, DAILY_BUY_CAP_KRW } from "@/lib/trading-limits";
 import { usFxPnlFromFills, type UsFxPnlView } from "@/lib/fx-pnl";
 import type { UsdKrwSnapshot } from "@/lib/fx-rate";
 export const SHADOW_CAPITAL = PAPER_CAPITAL_KRW;
+// Changing this FX basis requires a new persisted ledger version. Mixing 1,500 KRW
+// lots with 1,400 marks would fake a ~6.7% loss and can trip a 3–5% stop.
 export const SHADOW_FX = USD_KRW_SAFETY_RATE;
 export const SHADOW_FEE = 0.0015;
 export const SHADOW_SLIPPAGE = 0.001;

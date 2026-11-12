@@ -50,7 +50,7 @@ python3 -m venv .venv-data && .venv-data/bin/pip install -r scripts/requirements
 - 2026-11-06 점수판 교체 기록은 `.data/decision-engine-cutover.json`의 `scorecardCutoverAt`에 보존합니다.
 - 라이브 엔진을 추세 돌파 v2로 되돌린 뒤 첫 사이클이 `{version: trend-breakout-v2-..., cutoverAt, restoredAt, previousVersion: scorecard-5view-v3-..., scorecardCutoverAt}`을 기록합니다. 같은 라이브 버전에서는 `cutoverAt`/`restoredAt`을 다시 쓰지 않습니다.
 - 복원 이후 모의주문의 `strategyVersion`과 성과 기록(`performanceHistory`)은 다시 `trend-breakout-v2-capital30m-unvalidated`입니다. 7일 성과는 같은 버전끼리만 계산합니다. 기존 체결·포지션·에이전트 소유 수량은 다시 쓰지 않습니다.
-- 시장지수 필터 A/B/C 그림자 비교(`market-comparison-v1`)는 계속 v2 추세 신호 기준선으로 돌아가며, 실제 주문과 섞이지 않습니다. `/api/strategy-comparison` 응답의 `liveDecisionEngine`에 복원 기록이 표시됩니다.
+- 시장지수 필터 A/B/C 그림자 비교(`market-comparison-v2`, 버전 `news-chart-market-filter-shadow-v2-fx1400`)는 계속 v2 추세 신호 기준선으로 돌아가며, 실제 주문과 섞이지 않습니다. 기존 `market-comparison-v1`(1,500원 환율)은 보존합니다. `/api/strategy-comparison` 응답의 `liveDecisionEngine`에 복원 기록이 표시됩니다.
 
 ## 화면
 `ScorecardPanel`: 종목별 5관점 점수·결론·필터, 선택 시 이유/진입가/손절선/틀렸다는 신호와 종가+20·60·200일선 차트(TradingView Lightweight Charts, Apache-2.0, 로고 표기 유지). 패널은 **표시·연구 전용**입니다. 접히지 않는 상시 문구로 「점수는 연구·표시용이며 승률이나 수익 확률이 아닙니다. 주문에 사용되지 않습니다.」를 보여 줍니다. 상단에 **참고 (미검증)** 로 PSR과 원유(WTI) 추세를 보여 주며, 달력 교차검증 불일치가 있으면 `calendar mismatch: …` 경고를 표시합니다. 옆의 `RiskContributionPanel`은 보유 비중·변동성·위험기여(표시·연구 전용)입니다. 이 값과 점수판 결론은 라이브 모의주문에 쓰지 않습니다.

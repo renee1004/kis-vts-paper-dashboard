@@ -32,5 +32,19 @@ function checkedNews(){
  await test('stop during buying power lookup prevents transport',async()=>{reset();sent=[];await executeVtsMockOrder({...client,getOverseasBuyingPower:async()=>{state.isRunning=false;return{amountUsd:20000,quantity:6,checkedAt:now};}},input);assert.equal(sent.length,0);});
  await test('pending order consumes daily cap before next buy',async()=>{reset();sent=[];await executeVtsMockOrder(client,input);await executeVtsMockOrder(client,{...input,stockCode:'OTHER',signalId:'other'});assert.equal(sent.length,1);});
  await test('old 3M research record is preserved; new experiment starts at 30M',()=>{delete global.__newsResearch;const old=path.join(dir,'news-research.json');fs.writeFileSync(old,'legacy record must stay');const research=load('src/lib/news-research.ts');const view=research.researchView([]);assert.equal(view.price.cashKrw,30e6);assert.equal(view.news.cashKrw,30e6);assert.equal(fs.readFileSync(old,'utf8'),'legacy record must stay');});
+ await test('1,500 FX v2 research ledger is preserved; fx1400 experiment starts in a new file',()=>{
+  delete global.__newsResearch;
+  const leftover=path.join(dir,'news-research-capital30m-v2.json');
+  const leftoverEvidence=path.join(dir,'news-evidence-capital30m-v2-2026-09.jsonl');
+  const payload=JSON.stringify({leftover:true,version:'news-shadow-v2-capital30m-unvalidated',positions:{'US_NASDAQ:AAPL':{averagePriceKrw:150150}}});
+  fs.writeFileSync(leftover,payload);fs.writeFileSync(leftoverEvidence,'{"leftover":true}\n');
+  const research=load('src/lib/news-research.ts');
+  const view=research.researchView([]);
+  assert.equal(view.version,'news-shadow-v3-fx1400-capital30m-unvalidated');
+  assert.equal(view.price.cashKrw,30e6);assert.equal(view.price.holdings,0);
+  assert.equal(fs.readFileSync(leftover,'utf8'),payload);
+  assert.equal(fs.readFileSync(leftoverEvidence,'utf8'),'{"leftover":true}\n');
+  assert.equal(fs.existsSync(path.join(dir,'news-research-capital30m-v3.json')),false);
+ });
  console.log(JSON.stringify({passed,externalOrders:0}));
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{global.Date=realDate;fs.rmSync(dir,{recursive:true,force:true});});

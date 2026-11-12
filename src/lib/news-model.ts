@@ -1,7 +1,7 @@
 import type { TradingMarket } from "@/lib/domain";
 import type { StrategySignal } from "@/lib/strategy";
 
-export const NEWS_VERSION = "news-shadow-v2-capital30m-unvalidated";
+export const NEWS_VERSION = "news-shadow-v3-fx1400-capital30m-unvalidated";
 export interface NewsTarget { market: TradingMarket; stockCode: string; stockName: string }
 export interface NewsArticle {
   id: string; title: string; url: string; source: string; feedId: string;

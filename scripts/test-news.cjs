@@ -139,7 +139,7 @@ async function main() {
     research.observeResearch({ ...input });
     assert.equal(research.researchView([target]).observations, 1);
     assert.equal(fs.existsSync(path.join(directory, 'state.json')), false);
-    assert.ok(fs.existsSync(path.join(directory, 'news-research-capital30m-v2.json')));
+    assert.ok(fs.existsSync(path.join(directory, 'news-research-capital30m-v3.json')));
   });
   test('restart preserves ledger and cancels pending simulated orders', () => {
     delete globalThis.__newsResearch;
@@ -147,9 +147,9 @@ async function main() {
     assert.equal(view.observations, 1); assert.equal(view.price.pending, 0);
   });
   test('corrupt research history fails closed without erasing it', () => {
-    fs.writeFileSync(path.join(directory, 'news-research-capital30m-v2.json'), '{bad'); delete globalThis.__newsResearch;
+    fs.writeFileSync(path.join(directory, 'news-research-capital30m-v3.json'), '{bad'); delete globalThis.__newsResearch;
     assert.throws(() => research.researchView([target]));
-    assert.equal(fs.readFileSync(path.join(directory, 'news-research-capital30m-v2.json'), 'utf8'), '{bad');
+    assert.equal(fs.readFileSync(path.join(directory, 'news-research-capital30m-v3.json'), 'utf8'), '{bad');
   });
   console.log(JSON.stringify({ passed, externalOrders: 0, note: 'Fixtures only; does not establish profitability.' }));
 }
