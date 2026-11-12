@@ -5,6 +5,10 @@ import { createChart, LineSeries, type IChartApi } from "lightweight-charts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CrudeOilReference, PsrReference, StoredScorecard } from "@/lib/scorecard-data";
 
+type DartCacheView = {
+  status: string; reason: string; cacheDate: string | null; stale: boolean; symbolCount: number;
+};
+
 type Point = { date: string; value: number };
 type Chart = { bars: Point[]; ma20: Point[]; ma60: Point[]; ma200: Point[] } | null;
 const label = { fundamentals: "펀더멘털", flows: "수급", technical: "기술적", news: "뉴스", macro: "거시" } as const;
@@ -46,6 +50,15 @@ function ReferenceNotes({ psr, crudeOil }: { psr?: PsrReference; crudeOil: Crude
   </div>;
 }
 
+function DartCacheNote({ dart }: { dart: DartCacheView | null }) {
+  if (!dart) return null;
+  const stale = dart.stale || dart.status !== "ok";
+  return <p role="status" className="rounded-md border border-dashed p-2 text-sm text-muted-foreground">
+    Open DART 재무 {stale ? "미확인" : `캐시 ${dart.cacheDate ?? ""} · ${dart.symbolCount}종목`}
+    {stale && dart.reason ? ` · ${dart.reason}` : ""} (표시·연구 전용, 주문 게이트 아님)
+  </p>;
+}
+
 function CalendarMismatchWarning({ messages, stale, unavailable }: { messages: string[]; stale: boolean; unavailable: boolean }) {
   if (stale) {
     return <p role="status" className="rounded-md border border-dashed p-2 text-sm text-muted-foreground">달력 대조 자료가 오래되어 미확인입니다. 주문 게이트는 바꾸지 않습니다.</p>;
@@ -64,6 +77,7 @@ export function ScorecardPanel() {
   const [cutover, setCutover] = useState<{ cutoverAt: string; previousVersion: string; version?: string; scorecardVersion?: string } | null>(null);
   const [crudeOil, setCrudeOil] = useState<CrudeOilReference | null>(null);
   const [calendar, setCalendar] = useState<{ messages: string[]; stale: boolean; unavailable: boolean }>({ messages: [], stale: false, unavailable: false });
+  const [dart, setDart] = useState<DartCacheView | null>(null);
   const [selected, setSelected] = useState<string>("");
   const [chart, setChart] = useState<Chart>(null);
   const [error, setError] = useState("");
@@ -76,6 +90,7 @@ export function ScorecardPanel() {
         if (!result.success) throw new Error(result.error);
         setCards(result.data.cards); setCutover(result.data.cutover); setChart(result.data.chart);
         setCrudeOil(result.data.crudeOil ?? null);
+        setDart(result.data.dart ?? null);
         setCalendar({
           messages: result.data.calendarCrosscheck?.messages ?? [],
           stale: !!result.data.calendarCrosscheck?.stale,
@@ -98,6 +113,7 @@ export function ScorecardPanel() {
       </p>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <CalendarMismatchWarning messages={calendar.messages} stale={calendar.stale} unavailable={calendar.unavailable} />
+      <DartCacheNote dart={dart} />
       <ReferenceNotes psr={card?.references?.psr} crudeOil={crudeOil} />
       {!cards.length && <p className="text-sm text-muted-foreground">분석 사이클 실행 후 표시됩니다.</p>}
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left">
@@ -106,7 +122,9 @@ export function ScorecardPanel() {
           <td>{c.stockName}</td>{(Object.keys(label) as (keyof typeof label)[]).map((p) => <td key={p} title={c.views[p].reason}>{score(c.views[p].score)}</td>)}
           <td className="font-medium">{c.conclusion}</td><td className="text-xs">{c.filters.join(", ") || "—"}</td></tr>; })}</tbody></table></div>
       {card && <div className="space-y-1 text-sm">
-        <p>{card.bullCase}</p><p>{card.bearCase}</p><p className="text-muted-foreground">{card.portfolioNote}</p>
+        <p>{card.bullCase}</p><p>{card.bearCase}</p>
+        <p className="text-muted-foreground">펀더멘털 {score(card.views.fundamentals.score)} · {card.views.fundamentals.reason}</p>
+        <p className="text-muted-foreground">{card.portfolioNote}</p>
         <p>진입가 {won(card.entryPrice)} · 손절선 {won(card.stopLoss)} · 틀렸다는 신호: {card.invalidation}</p>
         <PriceChart chart={chart} /></div>}
     </CardContent></Card>;

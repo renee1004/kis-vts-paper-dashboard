@@ -10,6 +10,7 @@ const news = load('src/lib/news-research.ts');
 process.env.DATA_DIR = dataDir;
 const sc = load('src/lib/scorecard.ts');
 const data = load('src/lib/scorecard-data.ts');
+const dart = load('src/lib/dart-data.ts');
 const { completedBars, analyzeTrend } = load('src/lib/strategy.ts');
 const { marketRiskLimits } = load('src/lib/trading-limits.ts');
 const kst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()).replaceAll('-', '');
@@ -22,7 +23,9 @@ for (const arg of process.argv.slice(2)) {
   const technical = sc.technicalLevels(bars);
   let headlines = { fresh: false, directHeadlines: [] };
   try { headlines = news.researchHeadlinesFor({ market, stockCode, stockName: stockCode }, []); } catch {}
-  const views = { fundamentals: sc.scoreFundamentals(d.symbol?.fundamentals ?? null), flows: sc.scoreFlows(d.symbol?.flows ?? null),
+  const views = {
+    fundamentals: sc.displayFundamentals(d.symbol?.fundamentals ?? null, dart.dartFundamentals(market, stockCode), { market, isEtf: !!d.symbol?.isEtf }),
+    flows: sc.scoreFlows(d.symbol?.flows ?? null),
     technical: sc.scoreTechnical(technical), news: sc.scoreNews(headlines), macro: sc.scoreMacro(d.macro) };
   const card = sc.decideScorecard({ market, stockCode, stockName: stockCode, price: technical?.lastClose ?? null, views, technical,
     stopFraction: analyzeTrend(bars.slice(-80)).stopFraction, holding: null,

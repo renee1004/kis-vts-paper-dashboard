@@ -160,14 +160,14 @@ check('order code paths do not import exchange_calendars, skfolio, or research c
     'src/lib/rule-engine.ts', 'src/lib/market-hours.ts', 'src/lib/market-calendar.ts',
     'src/lib/kis-vts-client.ts',
   ];
-  const banned = /skfolio|exchange_calendars|calendar-crosscheck|risk-contribution\.py|research-display/;
+  const banned = /skfolio|exchange_calendars|calendar-crosscheck|risk-contribution\.py|opendart-fundamentals|OpenDartReader|research-display/;
   for (const file of orderFiles) {
     const src = fs.readFileSync(path.join(root, file), 'utf8');
     assert.equal(banned.test(src), false, file);
   }
   const agent = fs.readFileSync(path.join(root, 'src/lib/agent.ts'), 'utf8');
   const orderBlock = agent.split('const intent = livePaperOrderIntent(signal)')[1].split('function buildScorecard')[0];
-  assert.equal(/writeResearchHoldings|calendarCrosscheck|riskContribution/.test(orderBlock), false);
+  assert.equal(/writeResearchHoldings|calendarCrosscheck|riskContribution|dartFundamentals|displayFundamentals/.test(orderBlock), false);
   assert.ok(agent.includes('writeResearchHoldings'));
   assert.equal(DEFAULT_SAFETY_SETTINGS.allowRealDomesticOrder, false);
   assert.equal(DEFAULT_SAFETY_SETTINGS.allowRealOverseasOrder, false);

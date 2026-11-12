@@ -1,9 +1,10 @@
 import "server-only";
 
 import { analyzeTrend, completedBars, livePaperOrderIntent, STRATEGY_VERSION, type DailyBar } from "@/lib/strategy";
-import { decideScorecard, eventStatus, referencePsr, scoreFlows, scoreFundamentals,
+import { decideScorecard, displayFundamentals, eventStatus, referencePsr, scoreFlows,
   scoreMacro, scoreNews, scoreTechnical, technicalLevels, UNKNOWN_PSR } from "@/lib/scorecard";
 import { eventCalendar, recordDecisionEngineCutover, scorecardData, setScorecard, writeResearchHoldings, writeScorecardUniverse } from "@/lib/scorecard-data";
+import { dartFundamentals } from "@/lib/dart-data";
 import { ownedLot } from "@/lib/ownership";
 import { kisFlows, kisFlowsDue, kisFundamentals, noteKisFlowsFailure, setKisFlows } from "@/lib/kis-quote-cache";
 import { domesticMarketDate, usMarketDate } from "@/lib/market-hours";
@@ -131,7 +132,11 @@ function buildScorecard(item: WatchlistItem, price: number | null, kisBars: Dail
   const kisFund = item.market === "DOMESTIC" && !data.symbol?.isEtf ? kisFundamentals(item.stockCode) : null;
   const kisFlow = item.market === "DOMESTIC" ? kisFlows(item.stockCode) : null;
   const views = {
-    fundamentals: scoreFundamentals(kisFund ? { ...kisFund, source: "KIS" } : data.symbol?.fundamentals ?? null),
+    fundamentals: displayFundamentals(
+      kisFund ? { ...kisFund, source: "KIS" } : data.symbol?.fundamentals ?? null,
+      dartFundamentals(item.market, item.stockCode),
+      { market: item.market, isEtf: !!data.symbol?.isEtf },
+    ),
     flows: scoreFlows(kisFlow ? { ...kisFlow, source: "KIS" } : data.symbol?.flows ?? null),
     technical: scoreTechnical(technical),
     // Structurally isolated: headlines + feed freshness only, no price/chart input.

@@ -157,7 +157,9 @@ check('decideScorecard / score views / vts-execution / agent order path ignore P
   const afterDecide = build.split('const card = decideScorecard')[1];
   assert.equal(/psr|crudeOil/i.test(beforeDecide), false);
   assert.ok(afterDecide.includes('references:'));
-  assert.ok(beforeDecide.includes('scoreFundamentals(kisFund ? { ...kisFund, source: "KIS" } : data.symbol?.fundamentals ?? null)'));
+  assert.ok(beforeDecide.includes('displayFundamentals('));
+  assert.ok(beforeDecide.includes('kisFund ? { ...kisFund, source: "KIS" } : data.symbol?.fundamentals ?? null'));
+  assert.ok(beforeDecide.includes('dartFundamentals(item.market, item.stockCode)'));
   assert.ok(beforeDecide.includes('scoreMacro(data.macro)'));
   const vts = fs.readFileSync(path.join(root, 'src/lib/vts-execution.ts'), 'utf8');
   assert.equal(/psr|crudeOil|WTI|CL=F|priceToSales/i.test(vts), false);

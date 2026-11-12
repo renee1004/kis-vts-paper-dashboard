@@ -18,6 +18,14 @@ export type Conclusion = (typeof CONCLUSIONS)[number];
 
 export interface ViewResult { score: ViewScore; reason: string }
 export interface FundamentalsInput { per: number | null; pbr: number | null; marketCapKrw: number | null; source?: string }
+/** Open DART financials for the domestic fundamentals view. Display/research only. */
+export interface DartFinancials {
+  revenue: number | null; operatingIncome: number | null; netIncome: number | null;
+  revenueYoyPct: number | null; operatingIncomeYoyPct: number | null; netIncomeYoyPct: number | null;
+  debtRatioPct: number | null; roePct: number | null;
+  source?: string; asOf?: string; reportName?: string;
+}
+export interface DartFundamentalsView { financials: DartFinancials | null; reason: string }
 export interface FlowsInput { foreignNetKrw: number | null; institutionNetKrw: number | null; days: number; source?: string }
 export interface MacroInput { vix: number | null; usdKrwChange20dPct: number | null; us10yChange20dBp: number | null }
 /** Headline-only input. Deliberately has no price/chart fields. */
@@ -101,6 +109,76 @@ export function scoreFundamentals(f: FundamentalsInput | null): ViewResult {
   if (input.per <= 0 || input.per > 40 || input.pbr > 5) return { score: -1, reason: `적자 또는 고평가 (PER ${input.per.toFixed(1)}, PBR ${input.pbr.toFixed(2)})${t}` };
   if (input.per <= 15 && input.pbr > 0 && input.pbr <= 1.5) return { score: 1, reason: `저평가 구간 (PER ${input.per.toFixed(1)}, PBR ${input.pbr.toFixed(2)})${t}` };
   return { score: 0, reason: `중립 밸류에이션 (PER ${input.per.toFixed(1)}, PBR ${input.pbr.toFixed(2)})${t}` };
+}
+
+/** Scoring fields only. Valuation extras on a DART payload cannot leak into this view. */
+export function scoringDartFinancials(input: unknown): DartFinancials | null {
+  const r = rec(input); if (!r) return null;
+  const n = (k: string) => finite(r[k]) ? r[k] as number : null;
+  return {
+    revenue: n("revenue"), operatingIncome: n("operatingIncome"), netIncome: n("netIncome"),
+    revenueYoyPct: n("revenueYoyPct"), operatingIncomeYoyPct: n("operatingIncomeYoyPct"), netIncomeYoyPct: n("netIncomeYoyPct"),
+    debtRatioPct: n("debtRatioPct"), roePct: n("roePct"),
+    source: typeof r.source === "string" ? r.source : undefined,
+    asOf: typeof r.asOf === "string" ? r.asOf : undefined,
+    reportName: typeof r.reportName === "string" ? r.reportName : undefined,
+  };
+}
+
+function dartBits(d: DartFinancials): string[] {
+  const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+  const bits: string[] = [];
+  if (finite(d.revenueYoyPct)) bits.push(`매출YoY ${pct(d.revenueYoyPct)}`);
+  if (finite(d.operatingIncomeYoyPct)) bits.push(`영업이익YoY ${pct(d.operatingIncomeYoyPct)}`);
+  if (finite(d.netIncomeYoyPct)) bits.push(`순이익YoY ${pct(d.netIncomeYoyPct)}`);
+  if (finite(d.debtRatioPct)) bits.push(`부채비율 ${d.debtRatioPct.toFixed(1)}%`);
+  if (finite(d.roePct)) bits.push(`ROE ${d.roePct.toFixed(1)}%`);
+  return bits;
+}
+
+/**
+ * Domestic fundamentals fallback from Open DART statements (not PER/PBR).
+ * Missing/failed DART input stays 미확인 with an explicit reason — never scored as 0.
+ */
+export function scoreDartFinancials(d: DartFinancials | null, unknownReason = "DART 재무 데이터 없음"): ViewResult {
+  const input = scoringDartFinancials(d);
+  const fallback = unknownReason.trim() || "DART 재무 데이터 없음";
+  if (!input) return { score: "UNKNOWN", reason: fallback };
+  const known = [input.revenueYoyPct, input.operatingIncomeYoyPct, input.netIncomeYoyPct, input.netIncome, input.roePct, input.debtRatioPct].filter(finite);
+  if (known.length < 2) return { score: "UNKNOWN", reason: fallback.includes("DART") ? fallback : "DART 재무 항목 부족" + tag(input.source) };
+  const t = tag(input.source), detail = dartBits(input).join(", ");
+  const loss = (finite(input.netIncome) && input.netIncome < 0) || (finite(input.operatingIncome) && input.operatingIncome < 0);
+  const highDebt = finite(input.debtRatioPct) && input.debtRatioPct > 200;
+  const badRoe = finite(input.roePct) && input.roePct < 0;
+  const sharpDrop = (finite(input.netIncomeYoyPct) && input.netIncomeYoyPct <= -30)
+    || (finite(input.revenueYoyPct) && input.revenueYoyPct <= -20);
+  if (loss || highDebt || badRoe || sharpDrop)
+    return { score: -1, reason: `실적 악화 또는 재무 위험 (${detail})${t}` };
+  const growth = (!finite(input.revenueYoyPct) || input.revenueYoyPct > 0)
+    && (!finite(input.operatingIncomeYoyPct) || input.operatingIncomeYoyPct > 0)
+    && (!finite(input.netIncomeYoyPct) || input.netIncomeYoyPct > 0)
+    && (!finite(input.netIncome) || input.netIncome > 0)
+    && (!finite(input.roePct) || input.roePct >= 5)
+    && (!finite(input.debtRatioPct) || input.debtRatioPct <= 150)
+    && (finite(input.revenueYoyPct) || finite(input.netIncome) || finite(input.roePct));
+  if (growth && ((finite(input.revenueYoyPct) && input.revenueYoyPct > 0) || (finite(input.netIncome) && input.netIncome > 0)))
+    return { score: 1, reason: `실적 성장·재무 양호 (${detail})${t}` };
+  return { score: 0, reason: `실적 혼조 (${detail})${t}` };
+}
+
+/**
+ * Prefer KIS/Naver/pykrx PER·PBR·시총. If those are 미확인, use Open DART for domestic
+ * non-ETF names. US/ETF keep the valuation UNKNOWN reason. Display/research only.
+ */
+export function displayFundamentals(
+  valuation: FundamentalsInput | null,
+  dart: DartFundamentalsView | null,
+  opts: { market: TradingMarket; isEtf?: boolean },
+): ViewResult {
+  const v = scoreFundamentals(valuation);
+  if (v.score !== "UNKNOWN") return v;
+  if (opts.market !== "DOMESTIC" || opts.isEtf) return v;
+  return scoreDartFinancials(dart?.financials ?? null, dart?.reason || v.reason);
 }
 
 export function scoreFlows(f: FlowsInput | null): ViewResult {

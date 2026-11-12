@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chartSeries, decisionEngineCutover, scorecardCrudeOil, scorecardsView } from "@/lib/scorecard-data";
+import { dartCacheView } from "@/lib/dart-data";
 import { calendarCrosscheckView, riskContributionView } from "@/lib/research-display";
 import { SCORECARD_VERSION } from "@/lib/scorecard";
 import { DECISION_ENGINE_VERSION } from "@/lib/strategy";
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     const chart = (market === "DOMESTIC" || market === "US_NASDAQ") && code && /^[A-Z0-9.]{1,20}$/i.test(code) ? chartSeries(market, code) : null;
     return NextResponse.json({ success: true, data: {
       version: SCORECARD_VERSION, liveEngine: DECISION_ENGINE_VERSION, cutover: decisionEngineCutover(),
-      cards: scorecardsView(), chart, crudeOil: scorecardCrudeOil(),
+      cards: scorecardsView(), chart, crudeOil: scorecardCrudeOil(), dart: dartCacheView(),
       calendarCrosscheck: calendarCrosscheckView(), riskContribution: riskContributionView(),
     } });
   } catch {

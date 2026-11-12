@@ -5,3 +5,4 @@ pykrx
 yfinance
 exchange_calendars==4.13.2
 skfolio
+opendartreader
