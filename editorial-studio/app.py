@@ -63,6 +63,10 @@ QPushButton#ghost { background: #FFFFFF; color: #374151; border: 1px solid #E5E7
 QPushButton#ghost:hover { border-color: #FF6B00; color: #FF6B00; }
 QFrame#persona { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; }
 QFrame#persona:hover { border-color: #FF6B00; }
+QFrame#persona[selected="true"] { background: #FFF7ED; border: 2px solid #FF6B00; }
+QFrame#persona QLabel, QFrame#persona QRadioButton { background: transparent; }
+QRadioButton::indicator { width: 14px; height: 14px; border-radius: 9px; border: 2px solid #9CA3AF; background: #FFFFFF; }
+QRadioButton::indicator:checked { border: 5px solid #FF6B00; border-radius: 12px; background: #FFFFFF; }
 QProgressBar { border: 1px solid #E5E7EB; border-radius: 6px; background: #FFFFFF; height: 12px; text-align: center; }
 QProgressBar::chunk { background: #FF6B00; border-radius: 5px; }
 QListWidget { background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; }
@@ -86,6 +90,16 @@ if HAS_PYSIDE:
 
     def badge(status: str) -> str:
         return STATUS.get(status, STATUS["waiting"])[0]
+
+    class PersonaCard(QFrame):
+        """Whole card is clickable, not just the small radio button."""
+
+        radio = None
+
+        def mousePressEvent(self, event):  # noqa: N802 - Qt override
+            if self.radio is not None:
+                self.radio.setChecked(True)
+            super().mousePressEvent(event)
 
     # ---- Workers ---------------------------------------------------------
     class ResearchWorker(QThread):
@@ -244,9 +258,11 @@ if HAS_PYSIDE:
             persona_card, pl = card("페르소나 선택")
             self.persona_group = QButtonGroup(self)
             self.persona_buttons: dict[str, QRadioButton] = {}
+            self.persona_frames: dict[str, QFrame] = {}
             for i, (key, p) in enumerate(self.config.get("personas", {}).items()):
-                frame = QFrame()
+                frame = PersonaCard()
                 frame.setObjectName("persona")
+                frame.setCursor(Qt.CursorShape.PointingHandCursor)
                 fl = QVBoxLayout(frame)
                 radio = QRadioButton(f"{p['label']}")
                 radio.setFont(QFont("", 10, QFont.Weight.Bold))
@@ -255,12 +271,16 @@ if HAS_PYSIDE:
                 desc.setWordWrap(True)
                 fl.addWidget(radio)
                 fl.addWidget(desc)
+                frame.radio = radio
                 self.persona_group.addButton(radio)
                 self.persona_buttons[key] = radio
+                self.persona_frames[key] = frame
+                radio.toggled.connect(self._refresh_persona_cards)
                 if i == 0:
                     radio.setChecked(True)
                 pl.addWidget(frame)
             layout.addWidget(persona_card)
+            self._refresh_persona_cards()
 
             batch_card, bl = card("일괄 작업")
             excel_btn = QPushButton("엑셀(.xlsx) 일괄 업로드")
@@ -352,6 +372,13 @@ if HAS_PYSIDE:
             return wrap
 
         # ---- actions -----------------------------------------------------
+        def _refresh_persona_cards(self, *_):
+            """Highlight the selected persona card (the native radio dot is hard to see)."""
+            for key, frame in getattr(self, "persona_frames", {}).items():
+                frame.setProperty("selected", self.persona_buttons[key].isChecked())
+                frame.style().unpolish(frame)
+                frame.style().polish(frame)
+
         def _persona_key(self) -> str:
             for key, btn in self.persona_buttons.items():
                 if btn.isChecked():
