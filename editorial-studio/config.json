@@ -1,0 +1,108 @@
+{
+  "app": {
+    "name": "Editorial Studio",
+    "version": "0.1.0"
+  },
+  "research": {
+    "naver_open_api_url": "https://openapi.naver.com/v1/search/blog.json",
+    "mobile_search_url": "https://m.search.naver.com/search.naver?where=m_blog&query={query}",
+    "sort": "sim",
+    "display": 10,
+    "target_valid_posts": 3,
+    "min_text_length": 200,
+    "request_delay_min": 1.5,
+    "request_delay_max": 3.0,
+    "timeout_seconds": 10,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "referer": "https://m.search.naver.com/"
+  },
+  "parsing": {
+    "body_selectors": [
+      ".se-main-container",
+      "#postViewArea",
+      "div.post_ct"
+    ],
+    "title_selectors": [
+      ".se-title-text",
+      ".htitle",
+      "#title_1",
+      "h3.se_textarea"
+    ],
+    "subheading_selectors": [
+      ".se-section-text.se-l-default p",
+      "h3",
+      "h4",
+      "strong"
+    ],
+    "exclude_image_keywords": [
+      "icon",
+      "sticker",
+      "sticker_inline",
+      "emoji",
+      "blank.gif",
+      "spacer",
+      "profile",
+      "thumb_profile"
+    ]
+  },
+  "naver": {
+    "login_url": "https://nid.naver.com/nidlogin.login",
+    "write_url": "https://blog.naver.com/GoBlogWrite.naver",
+    "main_frame": "#mainFrame",
+    "frame_wait_seconds": 15,
+    "selectors": {
+      "login_id": "#id",
+      "login_pw": "#pw",
+      "login_button": "#log\\.login",
+      "main_frame": "#mainFrame",
+      "popup_cancel_button": ".se-popup-button-cancel",
+      "popup_close_button": ".se-popup-close-button",
+      "help_close_button": ".se-help-panel-close-button, .btn_close_help",
+      "draft_popup_button": ".se-popup-button-text, .se-popup-button-cancel",
+      "title_section": ".se-section-documentTitle",
+      "title_textarea": ".se-section-documentTitle .se-textarea, .se-documentTitle-editView .se-textarea",
+      "body_section": ".se-section-text",
+      "body_textarea": ".se-section-text .se-textarea, .se-text-paragraph",
+      "save_button": ".save_btn__bzc5B",
+      "save_button_fallbacks": [
+        ".save_btn__bzc5B",
+        "button[class*='save_btn']",
+        ".btn_save"
+      ],
+      "saved_toast": ".toast, .se-toast, [class*='toast']"
+    }
+  },
+  "typing": {
+    "typing_delay": 0.03,
+    "typing_noise": 0.01,
+    "typing_delay_min": 0.02,
+    "typing_delay_max": 0.06,
+    "paste_delay": 0.6,
+    "action_delay": 0.8
+  },
+  "personas": {
+    "trend_editor": {
+      "label": "2030 트렌드 에디터",
+      "description": "경쾌하고 공감 가는 구어체, 짧은 문단 호흡",
+      "tone": "친근하고 발랄한 구어체. 짧은 문장 위주, 독자에게 말을 거는 듯한 호흡.",
+      "system_prompt": "당신은 2030 세대의 공감을 이끄는 트렌드 에디터입니다. 경쾌한 구어체로, 짧은 문단 호흡을 유지하며 글을 씁니다. 딱딱한 정보 나열보다 '나도 저기 가봤는데' 식의 공감 포인트를 먼저 짚어주세요."
+    },
+    "pro_marketer": {
+      "label": "전문 마케터/분석가",
+      "description": "데이터·구조 중심, 신뢰감 있는 비즈니스 톤",
+      "tone": "신뢰감 있는 비즈니스 톤. 수치와 비교 근거를 제시하고 구조적으로 정리합니다.",
+      "system_prompt": "당신은 데이터와 구조로 설득하는 전문 마케터이자 분석가입니다. 주장마다 근거와 비교 기준을 제시하고, 독자가 바로 의사결정할 수 있게 핵심을 구조화해 주세요."
+    },
+    "lifestyle_curator": {
+      "label": "감성 라이프스타일 큐레이터",
+      "description": "경험 묘사 중심, 부드럽고 세련된 톤",
+      "tone": "부드럽고 세련된 문장. 공간·맛·분위기를 감각적으로 묘사합니다.",
+      "system_prompt": "당신은 감성적인 라이프스타일 큐레이터입니다. 직접 경험한 장면을 감각적으로 묘사하고, 독자가 그 공간에 있는 듯 느끼게 부드럽고 세련되게 글을 씁니다."
+    }
+  },
+  "gemini": {
+    "model": "gemini-2.0-flash",
+    "temperature": 0.8,
+    "max_output_tokens": 4096
+  }
+}
