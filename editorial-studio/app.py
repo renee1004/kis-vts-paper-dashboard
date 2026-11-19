@@ -131,41 +131,43 @@ if HAS_PYSIDE:
         finished_ok = Signal(dict)
         failed = Signal(str)
 
-        def __init__(self, title: str, body: str, naver_id: str, naver_pw: str,
-                     typing_delay: float, dry_run: bool = False):
+        def __init__(self, title: str, body: str, dry_run: bool = False):
             super().__init__()
             self.title, self.body = title, body
-            self.naver_id, self.naver_pw = naver_id, naver_pw
-            self.typing_delay, self.dry_run = typing_delay, dry_run
+            self.dry_run = dry_run
 
         def run(self):
             try:
                 from naver_bot import NaverBlogBot
 
                 bot = NaverBlogBot(progress_cb=self.progress.emit, dry_run=self.dry_run)
-                bot.set_typing_delay(self.typing_delay)
-                self.finished_ok.emit(bot.run(self.title, self.body, self.naver_id, self.naver_pw))
+                self.finished_ok.emit(bot.run(self.title, self.body))
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(str(exc))
 
     # ---- Settings dialog ---------------------------------------------------
     class SettingsDialog(QDialog):
-        """API 키/계정은 이 모달에서만 입력받아 로컬 .env에 저장한다."""
+        """API 키는 이 모달에서만 입력받아 로컬 .env에 저장한다.
+
+        네이버 계정(아이디/비밀번호)은 받지 않는다 — 로그인은 브라우저에서 직접 한다.
+        """
+
+        # Legacy keys from earlier builds; dropped from .env on the next save.
+        REMOVED_KEYS = ("NAVER_ID", "NAVER_PW")
 
         def __init__(self, parent=None):
             super().__init__(parent)
-            self.setWindowTitle("설정 — API 키 & 네이버 계정")
+            self.setWindowTitle("설정 — API 키")
             self.setMinimumWidth(420)
             layout = QVBoxLayout(self)
-            layout.addWidget(QLabel("키는 이 PC의 .env 파일에만 저장되며 코드에 포함되지 않습니다."))
+            layout.addWidget(QLabel("키는 이 PC의 .env 파일에만 저장되며 코드에 포함되지 않습니다.\n"
+                                    "네이버 로그인은 임시저장 시 열리는 브라우저에서 직접 해 주세요."))
             self.fields: dict[str, QLineEdit] = {}
             current = self._read_env()
             for key, label, pw in [
                 ("GEMINI_API_KEY", "Gemini API Key", True),
                 ("NAVER_CLIENT_ID", "Naver Client ID", False),
                 ("NAVER_CLIENT_SECRET", "Naver Client Secret", True),
-                ("NAVER_ID", "네이버 아이디 (임시저장용)", False),
-                ("NAVER_PW", "네이버 비밀번호", True),
             ]:
                 layout.addWidget(QLabel(label))
                 edit = QLineEdit(current.get(key, ""))
@@ -190,6 +192,9 @@ if HAS_PYSIDE:
 
         def _save(self):
             merged = self._read_env()
+            for key in self.REMOVED_KEYS:
+                merged.pop(key, None)
+                os.environ.pop(key, None)
             for key, edit in self.fields.items():
                 merged[key] = edit.text().strip()
                 os.environ[key] = merged[key]
@@ -267,7 +272,7 @@ if HAS_PYSIDE:
             bl.addWidget(hint)
             layout.addWidget(batch_card)
 
-            settings_btn = QPushButton("⚙ API 키 & 네이버 계정 설정")
+            settings_btn = QPushButton("⚙ API 키 설정")
             settings_btn.setObjectName("ghost")
             settings_btn.clicked.connect(lambda: SettingsDialog(self).exec())
             layout.addWidget(settings_btn)
@@ -319,21 +324,8 @@ if HAS_PYSIDE:
             layout.addWidget(queue_card, 1)
 
             publish_card, pl = card("안전 발행")
-            pl.addWidget(QLabel("휴먼 타이핑 속도"))
-            slider_row = QHBoxLayout()
-            self.typing_slider = QSlider(Qt.Orientation.Horizontal)
-            self.typing_slider.setRange(20, 60)  # 0.02s - 0.06s (ms 단위 표시)
-            self.typing_slider.setValue(30)
-            self.typing_label = QLabel("0.03초/자")
-            self.typing_label.setObjectName("hint")
-            self.typing_slider.valueChanged.connect(
-                lambda v: self.typing_label.setText(f"{v / 1000:.2f}초/자")
-            )
-            slider_row.addWidget(self.typing_slider, 1)
-            slider_row.addWidget(self.typing_label)
-            pl.addLayout(slider_row)
-
-            mode = QLabel("발행 모드: 임시저장 전용 (자동 발행은 지원하지 않습니다)")
+            mode = QLabel("발행 모드: 임시저장 전용 (자동 발행은 지원하지 않습니다)\n"
+                          "로그인이 필요하면 열린 브라우저에서 직접 로그인해 주세요.")
             mode.setObjectName("hint")
             mode.setWordWrap(True)
             pl.addWidget(mode)
@@ -477,12 +469,7 @@ if HAS_PYSIDE:
                 return
             self.save_btn.setEnabled(False)
             self._set_log("네이버 임시저장 중… (발행은 하지 않습니다)", 95)
-            worker = NaverBotWorker(
-                title, body,
-                os.getenv("NAVER_ID", ""), os.getenv("NAVER_PW", ""),
-                typing_delay=self.typing_slider.value() / 1000,
-                dry_run=dry_run,
-            )
+            worker = NaverBotWorker(title, body, dry_run=dry_run)
             worker.progress.connect(lambda m: self._set_log(m, 97))
             worker.finished_ok.connect(self._on_save_done)
             worker.failed.connect(lambda e: self._on_error(self.keyword_edit.text(), e))

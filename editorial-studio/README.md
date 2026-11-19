@@ -15,7 +15,8 @@ cp .env.example .env   # GEMINI_API_KEY / NAVER_CLIENT_ID·SECRET 입력 (없으
 python app.py
 ```
 
-계정·키는 코드에 하드코딩하지 않습니다. GUI의 `⚙ API 키 & 네이버 계정 설정`에서 입력하면 로컬 `.env`에만 저장됩니다.
+API 키는 코드에 하드코딩하지 않습니다. GUI의 `⚙ API 키 설정`에서 입력하면 로컬 `.env`에만 저장됩니다.
+네이버 아이디·비밀번호는 앱에 입력하지 않습니다. 임시저장 시 열리는 브라우저에서 직접 로그인하면, 로그인 상태가 로컬 `.chrome-profile/`에 유지됩니다.
 
 ## 모듈 단독 검증
 
@@ -24,7 +25,7 @@ python researcher.py                    # 파서 + 폴백 리포트 (오프라�
 python researcher.py --live "성수동 맛집 추천"   # 실제 수집 (네트워크 필요)
 python writer.py                        # 페르소나 3종 초안 + AI 티 제거 검증
 python naver_bot.py                     # dry-run (브라우저 없이 흐름 검증)
-python naver_bot.py --live              # 실제 임시저장 (.env 계정 + Chrome 필요)
+python naver_bot.py --live              # 실제 임시저장 (Chrome 필요, 첫 실행 시 직접 로그인)
 ```
 
 ## 동작 원칙

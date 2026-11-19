@@ -50,12 +50,12 @@
     "write_url": "https://blog.naver.com/GoBlogWrite.naver",
     "main_frame": "#mainFrame",
     "frame_wait_seconds": 15,
-    "login_wait_seconds": 120,
+    "login_wait_seconds": 300,
     "save_confirm_timeout_seconds": 10,
+    "save_success_keywords": ["저장되었습니다", "저장 완료", "저장했습니다"],
+    "save_failure_keywords": ["실패", "오류", "에러", "error", "fail"],
     "selectors": {
-      "login_id": "#id",
       "login_pw": "#pw",
-      "login_button": "#log\\.login",
       "main_frame": "#mainFrame",
       "popup_cancel_button": ".se-popup-button-cancel",
       "popup_close_button": ".se-popup-close-button",
@@ -71,16 +71,11 @@
         "button[class*='save_btn']",
         ".btn_save"
       ],
-      "saved_toast": ".toast, .se-toast, [class*='toast']"
+      "saved_toast": ".se-toast, [class*='toast']"
     }
   },
   "typing": {
-    "typing_delay": 0.03,
-    "typing_noise": 0.01,
-    "typing_delay_min": 0.02,
-    "typing_delay_max": 0.06,
-    "paste_delay": 0.6,
-    "action_delay": 0.8
+    "paragraph_delay": 0.3
   },
   "personas": {
     "trend_editor": {

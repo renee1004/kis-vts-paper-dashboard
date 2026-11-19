@@ -20,14 +20,14 @@
 
 - 런타임: Python 3.10+ / GUI: `PySide6` / AI: `google-genai` (Gemini)
 - 자동화·파싱: `selenium`, `webdriver-manager`, `requests`, `beautifulsoup4`
-- 유틸: `pyperclip`, `pandas`, `openpyxl`, `python-dotenv`
+- 유틸: `pandas`, `openpyxl`, `python-dotenv`
 
 | 파일 | 역할 |
 |---|---|
 | `app.py` | PySide6 3단 대시보드 GUI + QThread 워커 |
 | `researcher.py` | 네이버 상위 글 수집 + Gemini 분석 리포트 |
 | `writer.py` | 벤치마킹 + 페르소나 기반 원고 생성 |
-| `naver_bot.py` | Selenium + pyperclip 안전 로그인·임시저장 |
+| `naver_bot.py` | Selenium 임시저장 (로그인은 사용자가 직접) |
 | `config.json` | 셀렉터, 지연시간, 페르소나 프리셋 |
 | `.env.example` | 환경변수 템플릿 |
 | `requirements.txt` | 의존성 |
@@ -47,9 +47,12 @@
 
 ## 5. 모듈 3 — `naver_bot.py`
 
-- 셀렉터는 `config.json` 참조. `pyperclip` + `Ctrl+V`/`Command+V` 우회 로그인 (`send_keys` 감지 회피)
+- 셀렉터는 `config.json` 참조. 앱은 네이버 아이디·비밀번호를 받거나 저장하지 않는다
+- 로그인: 사용자가 봇이 연 브라우저에서 직접 로그인(최대 300초 대기). 세션은 로컬 `.chrome-profile/`(gitignore)에 유지
+- 자동화 감지 회피(자동화 플래그 숨김, 클립보드 붙여넣기, 무작위 타이핑)는 하지 않는다
 - `GoBlogWrite.naver` → `WebDriverWait(15)` → `#mainFrame` 전환, 팝업 닫기
-- 휴먼 타이핑: `typing_delay` 기본 0.03초 ±0.01 노이즈, 줄바꿈 `Keys.ENTER`
+- 입력: 문단 단위 `send_keys`, 줄바꿈 `Keys.ENTER`
+- 저장 확인: 클릭 후 새로 뜬 알림 문구에 성공 키워드가 있고 실패 키워드가 없을 때만 성공 (`config.json`의 `save_success_keywords`/`save_failure_keywords`)
 - **안전 발행**: 자동 발행 금지, 임시저장만. 반환 `{"success": true, "message": "임시저장 완료"}`
 
 ## 6. 모듈 4 — `app.py` (PySide6)
