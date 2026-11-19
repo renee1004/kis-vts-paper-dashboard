@@ -56,16 +56,31 @@ class NaverBlogBot:
         return Keys.COMMAND if platform.system() == "Darwin" else Keys.CONTROL
 
     def _clipboard_paste(self, element, text: str) -> None:
-        """pyperclip + Ctrl/Cmd+V — send_keys 직접 입력 감지 회피."""
+        """pyperclip + Ctrl/Cmd+V — send_keys 직접 입력 감지 회피.
+
+        The previous clipboard value is restored in a finally block so a
+        credential (login password) never lingers in the system clipboard,
+        clipboard history, or sync services after the paste.
+        """
         import pyperclip
         from selenium.webdriver.common.action_chains import ActionChains
         from selenium.webdriver.common.keys import Keys
 
-        pyperclip.copy(text)
-        element.click()
-        ActionChains(self.driver).key_down(self._paste_shortcut()).send_keys("v") \
-            .key_up(self._paste_shortcut()).perform()
-        time.sleep(float(self.tcfg.get("paste_delay", 0.6)))
+        try:
+            previous = pyperclip.paste()
+        except Exception:  # noqa: BLE001 - clipboard may be empty/unavailable
+            previous = None
+        try:
+            pyperclip.copy(text)
+            element.click()
+            ActionChains(self.driver).key_down(self._paste_shortcut()).send_keys("v") \
+                .key_up(self._paste_shortcut()).perform()
+            time.sleep(float(self.tcfg.get("paste_delay", 0.6)))
+        finally:
+            try:
+                pyperclip.copy(previous if previous is not None else "")
+            except Exception:  # noqa: BLE001,S110
+                pass
 
     def human_type(self, element, text: str) -> None:
         """한 글자씩, 설정 지연 ± 노이즈로 입력. 줄바꿈은 Enter 키."""
@@ -98,6 +113,41 @@ class NaverBlogBot:
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         return self.driver
 
+    def _is_logged_in(self) -> bool:
+        """Authenticated once we leave the NID login domain / login form."""
+        try:
+            url = self.driver.current_url or ""
+            if "nid.naver.com" in url or "nidlogin" in url:
+                return False
+            from selenium.webdriver.common.by import By
+
+            return not self.driver.find_elements(By.CSS_SELECTOR, self.selectors["login_pw"])
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _wait_for_login(self) -> None:
+        """Poll for authentication, pausing for manual CAPTCHA completion.
+
+        Raises TimeoutError instead of proceeding to the editor unauthenticated.
+        """
+        timeout = int(self.ncfg.get("login_wait_seconds", 120))
+        deadline = time.monotonic() + timeout
+        announced = False
+        while time.monotonic() < deadline:
+            if self._is_logged_in():
+                self.progress_cb("로그인 확인 완료")
+                return
+            if not announced:
+                announced = True
+                self.progress_cb(
+                    f"로그인 확인 대기 중 — 캡차/추가 인증이 뜨면 브라우저에서 직접 완료해 주세요. "
+                    f"최대 {timeout}초 동안 기다립니다."
+                )
+            time.sleep(1.0)
+        raise TimeoutError(
+            f"{timeout}초 안에 로그인이 확인되지 않았습니다. 브라우저에서 인증을 완료한 뒤 다시 실행해 주세요."
+        )
+
     def login(self, naver_id: str, naver_pw: str) -> None:
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support import expected_conditions as EC
@@ -110,8 +160,7 @@ class NaverBlogBot:
         pw_el = self.driver.find_element(By.CSS_SELECTOR, self.selectors["login_pw"])
         self._clipboard_paste(pw_el, naver_pw)
         self.driver.find_element(By.CSS_SELECTOR, self.selectors["login_button"]).click()
-        time.sleep(float(self.tcfg.get("action_delay", 0.8)) * 3)
-        self.progress_cb("로그인 시도 완료 (캡차 발생 시 브라우저에서 직접 완료해 주세요)")
+        self._wait_for_login()
 
     def open_editor_and_prepare(self) -> None:
         from selenium.webdriver.common.by import By
@@ -176,9 +225,23 @@ class NaverBlogBot:
             if save_btn is None:
                 return {"success": False, "message": "임시저장 버튼을 찾지 못했습니다. config.json 셀렉터를 확인해 주세요."}
             save_btn.click()
-            time.sleep(2)
-            self.progress_cb("임시저장 버튼 클릭 완료")
-            return {"success": True, "message": "임시저장 완료"}
+            self.progress_cb("임시저장 버튼 클릭 — 저장 확인 대기 중…")
+            # A click is not a save: only report success once Naver shows the
+            # persisted-state indicator, otherwise the user could close the
+            # retained browser and lose the article.
+            toast_selector = self.selectors.get("saved_toast", ".toast, .se-toast, [class*='toast']")
+            confirm_timeout = int(self.ncfg.get("save_confirm_timeout_seconds", 10))
+            try:
+                toast = WebDriverWait(self.driver, confirm_timeout).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, toast_selector))
+                )
+                self.progress_cb(f"임시저장 확인: {(toast.text or '').strip()[:60]}")
+                return {"success": True, "message": "임시저장 완료"}
+            except Exception:  # noqa: BLE001
+                return {
+                    "success": False,
+                    "message": "임시저장 확인에 실패했습니다. 브라우저에서 저장 상태를 직접 확인해 주세요. (브라우저는 닫지 않았습니다)",
+                }
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "message": f"임시저장 실패: {exc}"}
 

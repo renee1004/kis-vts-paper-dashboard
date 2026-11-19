@@ -250,9 +250,14 @@ class NaverBlogResearcher:
                 model=gcfg.get("model", "gemini-2.0-flash"), contents=prompt
             )
             data = json.loads(re.sub(r"^```(?:json)?|```$", "", (resp.text or "").strip(), flags=re.M))
+            # Metrics are measured, never model-guessed: the corpus sent above is
+            # truncated, so overwrite them from the collected posts. Gemini is
+            # only trusted for qualitative fields (subheadings, gaps, outline).
             data["keyword"] = keyword
             data["fallback_mode"] = False
-            data.setdefault("source_urls", [p.url for p in posts])
+            data["source_urls"] = [p.url for p in posts]
+            data["avg_length"] = round(sum(p.length for p in posts) / len(posts))
+            data["avg_images"] = round(sum(p.image_count for p in posts) / len(posts))
             return data
         except Exception as exc:  # noqa: BLE001
             self.progress_cb(f"Gemini 분석 실패, 휴리스틱으로 대체: {exc}")
@@ -311,7 +316,15 @@ class NaverBlogResearcher:
             self.progress_cb("수집 실패 — 폴백 리포트로 대체합니다.")
             return self.fallback_report(keyword)
 
-        return self._gemini_analysis(keyword, posts) or self._heuristic_analysis(keyword, posts)
+        report = self._gemini_analysis(keyword, posts) or self._heuristic_analysis(keyword, posts)
+        if len(posts) < target:
+            # Partial collection: averages from 1-2 posts are unstable, so do
+            # not present this as a full benchmark.
+            self.progress_cb(f"유효 글 {len(posts)}/{target}개만 확보 — 부분 수집으로 표시합니다.")
+            report["fallback_mode"] = True
+            report["partial_collection"] = True
+            report["collected_count"] = len(posts)
+        return report
 
 
 if __name__ == "__main__":

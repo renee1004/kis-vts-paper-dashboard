@@ -50,6 +50,8 @@
     "write_url": "https://blog.naver.com/GoBlogWrite.naver",
     "main_frame": "#mainFrame",
     "frame_wait_seconds": 15,
+    "login_wait_seconds": 120,
+    "save_confirm_timeout_seconds": 10,
     "selectors": {
       "login_id": "#id",
       "login_pw": "#pw",

@@ -96,8 +96,8 @@ class BlogWriter:
     def _fallback_draft(self, keyword: str, report: dict, persona_key: str) -> dict:
         """Gemini 키가 없을 때도 앱 흐름이 끊기지 않는 로컬 초안."""
         persona = self.get_persona(persona_key)
-        gaps = report.get("content_gap", ["상위 글에서 빠진 실용 정보"])
-        core = report.get("core_keywords", [keyword])
+        gaps = [g for g in (report.get("content_gap") or []) if str(g).strip()] or ["상위 글에서 빠진 실용 정보"]
+        core = [c for c in (report.get("core_keywords") or []) if str(c).strip()] or [keyword]
         title = f"{keyword}, 직접 가보니 달랐던 솔직 후기"
         paras = [
             f"{keyword} 찾다가 후기만 잔뜩 읽고 더 헷갈렸던 적 있으신가요. 저도 그랬어요. 그래서 이번엔 직접 다녀온 기준으로만 정리해 봤어요.",
@@ -148,6 +148,10 @@ if __name__ == "__main__":
         "fallback_mode": False,
     }
     writer = BlogWriter()
+    # Regression: "AI 초안 생성" before research passes content_gap: [].
+    empty = writer.generate("테스트 키워드", {"content_gap": [], "core_keywords": []}, persona_key="trend_editor")
+    assert empty["body"], empty
+    print("[✔ empty content_gap regression passed]")
     for key in writer.personas:
         out = writer.generate("성수동 맛집 추천", sample_report, persona_key=key)
         assert out["title"] and out["body"] and "**" not in out["body"] and "##" not in out["body"]

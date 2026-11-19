@@ -205,6 +205,7 @@ if HAS_PYSIDE:
             super().__init__()
             self.config = load_config()
             self.report: dict | None = None
+            self.reports: dict[str, dict] = {}
             self.workers: list[QThread] = []
             self.setWindowTitle("Editorial Studio — 반자동 AI 편집장")
             self.resize(1240, 780)
@@ -390,10 +391,33 @@ if HAS_PYSIDE:
                     return
             self._add_queue_item(keyword, status)
 
+        def _show_report(self, report: dict):
+            fb = " · 폴백 모드" if report.get("fallback_mode") else ""
+            self.bench_label.setText(
+                f"평균 글자수 {report.get('avg_length', 0):,}자 · 평균 이미지 {report.get('avg_images', 0)}장{fb}\n"
+                f"공통 목차: {', '.join(report.get('common_subheadings', [])) or '-'}\n"
+                f"핵심 키워드: {', '.join(report.get('core_keywords', [])) or '-'}\n"
+                f"차별화 포인트: {' / '.join(report.get('content_gap', [])) or '-'}"
+            )
+
+        def report_for(self, keyword: str) -> dict | None:
+            """Only a report researched for this exact keyword may be reused."""
+            report = self.reports.get(keyword)
+            if report is not None:
+                return report
+            if self.report and self.report.get("keyword") == keyword:
+                return self.report
+            return None
+
         def _on_queue_click(self, item: QListWidgetItem):
             data = item.data(Qt.ItemDataRole.UserRole) or {}
             if data.get("keyword"):
                 self.keyword_edit.setText(data["keyword"])
+                report = self.report_for(data["keyword"])
+                if report:
+                    self._show_report(report)
+                else:
+                    self.bench_label.setText("이 키워드는 아직 리서치하지 않았습니다. 먼저 리서치를 실행해 주세요.")
 
         def on_research(self):
             keyword = self.keyword_edit.text().strip()
@@ -411,16 +435,15 @@ if HAS_PYSIDE:
             worker.start()
 
         def _on_research_done(self, keyword: str, report: dict):
+            report = {**report, "keyword": report.get("keyword") or keyword}
+            self.reports[keyword] = report
             self.report = report
             self.research_btn.setEnabled(True)
             self._set_queue_status(keyword, "done")
-            fb = " · 폴백 모드" if report.get("fallback_mode") else ""
-            self.bench_label.setText(
-                f"평균 글자수 {report.get('avg_length', 0):,}자 · 평균 이미지 {report.get('avg_images', 0)}장{fb}\n"
-                f"공통 목차: {', '.join(report.get('common_subheadings', [])) or '-'}\n"
-                f"핵심 키워드: {', '.join(report.get('core_keywords', [])) or '-'}\n"
-                f"차별화 포인트: {' / '.join(report.get('content_gap', [])) or '-'}"
-            )
+            # A queued research finishing later must not overwrite the
+            # benchmark card for a keyword the user has since switched to.
+            if self.keyword_edit.text().strip() == keyword:
+                self._show_report(report)
             self._set_log("리서치 완료 — AI 초안을 생성할 수 있습니다.", 60)
 
         def on_write(self):
@@ -428,7 +451,7 @@ if HAS_PYSIDE:
             if not keyword:
                 QMessageBox.warning(self, "입력 확인", "주제/키워드를 입력해 주세요.")
                 return
-            report = self.report or {"keyword": keyword, "content_gap": [], "core_keywords": [keyword]}
+            report = self.report_for(keyword) or {"keyword": keyword, "content_gap": [], "core_keywords": [keyword]}
             self.write_btn.setEnabled(False)
             self._set_log("AI 초안 생성 중…", 75)
             worker = WriterWorker(keyword, report, self._persona_key())
